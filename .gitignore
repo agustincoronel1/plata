@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Variables de entorno
+.env
+.env.*
+!.env.example
+
+# Node / React
+node_modules/
+dist/
+dist-ssr/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Bases de datos locales
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+
+# VS Code
+.vscode/
+
+# Archivos temporales del sistema
+.DS_Store
+Thumbs.db
+*.log
+*.tmp

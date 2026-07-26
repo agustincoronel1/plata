@@ -1,0 +1,4 @@
+{"query": "nafta", "relevant_category": "transporte", "top_k": 3}
+{"query": "cafe con leche", "relevant_category": "gastronomía", "top_k": 3}
+{"query": "compra semanal super", "relevant_category": "supermercado", "top_k": 3}
+{"query": "pago de gas", "relevant_category": "servicios", "top_k": 3}

@@ -1,0 +1,7 @@
+{"intent": "dashboard_summary", "args": {}, "expected_tools": ["get_financial_summary"], "expected_approval": false}
+{"intent": "list_commitments", "args": {}, "expected_tools": ["list_pending_commitments"], "expected_approval": false}
+{"intent": "search_history", "args": {"query": "nafta"}, "message": "buscar nafta", "expected_tools": ["search_transactions"], "expected_approval": false}
+{"intent": "simulate_purchase", "args": {"amount": "900000", "installments": 9}, "expected_tools": ["simulate_purchase_preview"], "expected_approval": false}
+{"intent": "compare_purchase_dates", "args": {}, "last_simulation": {"amount": "900000", "installments": 9}, "expected_tools": ["simulate_purchase_preview", "simulate_purchase_preview"], "expected_approval": false}
+{"intent": "create_transaction", "args": {}, "message": "gasté 25 lucas en nafta", "expected_tools": ["create_transaction_draft"], "expected_approval": true}
+{"intent": "unknown", "args": {}, "expected_tools": [], "expected_approval": false}

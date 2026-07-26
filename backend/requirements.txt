@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+sqlalchemy>=2,<3
+alembic>=1,<2
+psycopg[binary]>=3,<4
+pydantic-settings>=2,<3
+# Proveedor de IA real (Día 4). Opcional en tiempo de ejecución: con AI_PROVIDER=mock el
+# SDK no se importa. Se importa de forma perezosa solo al usar el proveedor "openai".
+openai>=1,<2
+# Orquestación del copiloto (LangGraph) + checkpoints en PostgreSQL.
+langgraph>=0.2,<0.4
+langgraph-checkpoint-postgres>=2,<3
+# RAG: tipo Vector para pgvector.
+pgvector>=0.3,<0.4
