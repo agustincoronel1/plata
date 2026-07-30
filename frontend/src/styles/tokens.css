@@ -1,0 +1,119 @@
+/**
+ * Tokens de Plata: la única fuente de verdad del sistema visual.
+ *
+ * Identidad: fondo casi negro con matiz verdoso, verde lima como color protagonista,
+ * blanco cálido para el texto y grises con tono verde. Alto contraste, poco ruido.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---------- Color: superficies ---------- */
+  --color-background: #0d0f0d;
+  --color-background-soft: #121512;
+  --color-surface: #181c18;
+  --color-surface-raised: #202520;
+  --color-surface-hover: #282e28;
+
+  /* ---------- Color: marca ---------- */
+  --color-primary: #a8f53c;
+  --color-primary-strong: #8ee629;
+  --color-primary-soft: #d9ff8a;
+  --color-primary-dark: #163d22;
+  /* Texto sobre lima: siempre el fondo casi negro (contraste 14:1). */
+  --color-on-primary: #0d0f0d;
+
+  /* ---------- Color: texto ---------- */
+  --color-text: #f5f7f3;
+  --color-text-secondary: #b5bdb4;
+  --color-text-muted: #8b958a;
+
+  /* ---------- Color: bordes ---------- */
+  --color-border: #2c332c;
+  --color-border-strong: #3b443b;
+
+  /* ---------- Color: estados ---------- */
+  --color-danger: #ff6b6b;
+  --color-warning: #ffd166;
+  --color-success: #70e88c;
+
+  /* ---------- Tipografía ---------- */
+  --font-sans:
+    "Manrope Variable", Manrope, Inter, system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+
+  /* El piso es el que permite que un saldo de ocho cifras entre entero en un teléfono
+     de 320px sin partirse ni recortarse. */
+  --text-hero: clamp(2.25rem, 10vw, 4.5rem);
+  --text-title: clamp(1.75rem, 5vw, 2.5rem);
+  --text-section: clamp(1.1rem, 2.4vw, 1.35rem);
+  --text-body: 1rem;
+  --text-small: 0.9375rem;
+  --text-label: 0.8125rem;
+  --text-micro: 0.75rem;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-black: 800;
+
+  /* ---------- Espacio: escala de 4px ---------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* ---------- Radios ---------- */
+  --radius-xs: 10px;
+  --radius-sm: 14px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-pill: 999px;
+
+  /* ---------- Sombras: oscuras, difusas, nunca bordes blancos ---------- */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 32%);
+  --shadow-md: 0 12px 32px -16px rgb(0 0 0 / 72%);
+  --shadow-lg: 0 24px 60px -24px rgb(0 0 0 / 82%);
+  --shadow-primary: 0 18px 48px -26px rgb(168 245 60 / 55%);
+
+  /* ---------- Movimiento ---------- */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --t-fast: 150ms;
+  --t-base: 200ms;
+  --t-slow: 250ms;
+
+  /* ---------- Controles ---------- */
+  --control-height: 3rem;
+  --control-height-sm: 2.25rem;
+  /* Área táctil mínima recomendada (44px). */
+  --tap-target: 2.75rem;
+
+  /* ---------- Layout ---------- */
+  --layout-max: 46rem;
+  --layout-wide: 78rem;
+  --sidebar-width: 15rem;
+  --copilot-width: 21rem;
+  --topbar-height: 4rem;
+  --bottom-nav-height: 4.5rem;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ---------- Capas ---------- */
+  --z-nav: 40;
+  --z-fab: 50;
+  --z-dock: 60;
+
+  /**
+   * Breakpoints de referencia (se escriben literales en las media queries porque las
+   * custom properties no funcionan dentro de @media):
+   *   30rem  = 480px   -> deja de ser una columna apretada
+   *   48rem  = 768px   -> tablet
+   *   64rem  = 1024px  -> aparece la barra lateral y desaparece la navegación inferior
+   *   80rem  = 1280px  -> el copiloto pasa a una columna propia
+   */
+}

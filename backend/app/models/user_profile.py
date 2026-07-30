@@ -20,7 +20,15 @@ MONEY = Numeric(14, 2)
 
 
 class UserProfile(TimestampMixin, Base):
-    """Perfil financiero. En el MVP hay uno solo: todavía no hay autenticación."""
+    """Perfil financiero de un usuario. Es también su identidad dentro de Plata.
+
+    La clave primaria es el `sub` del JWT de Supabase, así que no hay tabla de usuarios
+    aparte ni columna `user_id` acá: el perfil ES el usuario. Se crea la primera vez que
+    alguien completa el onboarding (`PUT /api/v1/profile`).
+
+    Movimientos, compromisos y simulaciones cuelgan de este id con `ON DELETE CASCADE`:
+    borrar el perfil se lleva todos los datos de esa persona, y solo los de esa persona.
+    """
 
     __tablename__ = "user_profiles"
     __table_args__ = (

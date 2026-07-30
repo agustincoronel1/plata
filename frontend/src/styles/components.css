@@ -1,0 +1,1284 @@
+/**
+ * Superficies y componentes de contenido: saldo, acciones rápidas, tarjetas, listas,
+ * estados vacíos, copiloto y simulador.
+ */
+
+/* ---------- Tarjeta de sección ---------- */
+
+.card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.card__heading {
+  min-width: 0;
+}
+
+.card__title {
+  font-size: var(--text-section);
+  font-weight: var(--weight-bold);
+}
+
+.card__subtitle {
+  margin-top: var(--space-1);
+  font-size: var(--text-label);
+  color: var(--color-text-muted);
+  max-width: 46ch;
+}
+
+.card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ---------- Saldo protagonista ---------- */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  padding: var(--space-6) var(--space-5);
+  color: var(--color-on-primary);
+  background:
+    radial-gradient(120% 140% at 100% 0%, var(--color-primary-soft) 0%, transparent 55%),
+    linear-gradient(155deg, var(--color-primary) 0%, var(--color-primary-strong) 100%);
+  box-shadow: var(--shadow-primary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Forma abstracta propia: un arco suave que da profundidad sin ilustraciones. */
+.hero::after {
+  content: "";
+  position: absolute;
+  right: -18%;
+  bottom: -55%;
+  width: 22rem;
+  height: 22rem;
+  border-radius: 50%;
+  border: 1.5rem solid rgb(13 15 13 / 6%);
+  pointer-events: none;
+}
+
+.hero__top,
+.hero__daily {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.hero__label {
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(13 15 13 / 70%);
+}
+
+.hero__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.15rem var(--space-3);
+  border-radius: var(--radius-pill);
+  background-color: rgb(13 15 13 / 10%);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-bold);
+}
+
+.hero__pill--positive {
+  background-color: rgb(13 15 13 / 88%);
+  color: var(--color-primary);
+}
+
+.hero__pill--attention {
+  background-color: rgb(13 15 13 / 88%);
+  color: var(--color-warning);
+}
+
+.hero__pill-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+/* Mismo criterio que en las métricas: el saldo es una sola unidad y no se parte. */
+.hero__value {
+  position: relative;
+  font-size: var(--text-hero);
+  font-weight: var(--weight-black);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hero__note {
+  position: relative;
+  font-size: var(--text-small);
+  font-weight: var(--weight-semibold);
+  color: rgb(13 15 13 / 78%);
+  max-width: 42ch;
+}
+
+.hero__daily {
+  margin-top: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: rgb(13 15 13 / 88%);
+  color: var(--color-text);
+}
+
+.hero__daily-label {
+  font-size: var(--text-label);
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-semibold);
+}
+
+.hero__daily-value {
+  font-size: 1.25rem;
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary);
+}
+
+.hero__daily-note {
+  flex-basis: 100%;
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+.hero__detail {
+  position: relative;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap-target);
+  padding: var(--space-1) 0;
+  color: var(--color-on-primary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  cursor: pointer;
+}
+
+.hero__detail:hover {
+  opacity: 0.75;
+}
+
+.hero__detail svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* ---------- Acciones rápidas ---------- */
+
+.quick {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.quick-action {
+  min-height: 5.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.quick-action:hover {
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+  transform: translateY(-2px);
+}
+
+.quick-action:active {
+  transform: translateY(0);
+}
+
+.quick-action__icon {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-xs);
+  background-color: var(--color-surface-raised);
+  color: var(--color-primary);
+}
+
+.quick-action__icon svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.quick-action--accent .quick-action__icon {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* ---------- Métricas ---------- */
+
+/**
+ * Dos columnas es el máximo: con cuatro, las tarjetas quedan tan angostas en los anchos
+ * intermedios de desktop que el importe no entra. `minmax(0, 1fr)` es lo que permite que
+ * la columna sea más angosta que su contenido sin desbordar la grilla.
+ */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.metric {
+  min-width: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.metric__label {
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/**
+ * El importe nunca se parte: es una sola unidad de lectura. Se escala con el viewport
+ * antes que romperse y, si aun así no entrara, se recorta con puntos suspensivos en vez
+ * de desbordar la tarjeta.
+ */
+.metric__value {
+  font-size: clamp(1.0625rem, 0.95rem + 0.9vw, 1.625rem);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metric__hint {
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Desglose del disponible ---------- */
+
+.breakdown {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  padding: var(--space-4);
+}
+
+.breakdown__title {
+  font-size: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+}
+
+.breakdown__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.breakdown__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.breakdown__row dt {
+  color: var(--color-text-secondary);
+  font-size: var(--text-small);
+}
+
+.breakdown__amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-weight: var(--weight-semibold);
+}
+
+.breakdown__amount--subtract {
+  color: var(--color-text-muted);
+}
+
+/* El signo "−" acompaña al texto "menos" para no depender solo del color. */
+.breakdown__sign {
+  color: var(--color-text-muted);
+}
+
+.breakdown__row--total {
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+}
+
+.breakdown__row--total dt {
+  font-weight: var(--weight-bold);
+  color: var(--color-text);
+}
+
+.breakdown__row--total .breakdown__amount {
+  font-size: 1.125rem;
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+}
+
+.breakdown__forecast {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--color-border);
+}
+
+.breakdown__note {
+  margin-top: var(--space-2);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Filas: movimientos y compromisos ---------- */
+
+.row-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row__icon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+}
+
+.row__icon svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.row--income .row__icon {
+  background-color: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+  color: var(--color-primary);
+}
+
+.row__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.row__title {
+  font-weight: var(--weight-bold);
+  font-size: var(--text-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__meta {
+  margin-top: 0.1rem;
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__amount {
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.row--income .row__amount {
+  color: var(--color-primary);
+}
+
+.row__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* Compromisos resueltos: se atenúan, pero el estado también se dice con texto. */
+.row--paid,
+.row--cancelled {
+  opacity: 0.62;
+}
+
+/* El compromiso más próximo tiene más jerarquía que el resto. */
+.row--next {
+  background-color: var(--color-surface-raised);
+  border-radius: var(--radius-md);
+  border-bottom-color: transparent;
+  padding-inline: var(--space-3);
+}
+
+.row__tags {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+/* Un compromiso ocupa dos líneas: la fila y sus acciones de estado. */
+.cm-item {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cm-item:last-child {
+  border-bottom: none;
+}
+
+.cm-item .row {
+  border-bottom: none;
+}
+
+.cm-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: 0 var(--space-1) var(--space-3);
+}
+
+/* ---------- Etiquetas de estado ---------- */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.1rem var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: 0.6875rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.tag--income,
+.tag--pending {
+  background-color: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  color: var(--color-primary);
+}
+
+.tag--expense {
+  background-color: color-mix(in srgb, var(--color-danger) 16%, transparent);
+  color: var(--color-danger);
+}
+
+.tag--paid {
+  background-color: color-mix(in srgb, var(--color-success) 16%, transparent);
+  color: var(--color-success);
+}
+
+.tag--cancelled,
+.tag--muted {
+  background-color: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+
+/* ---------- Estado vacío ---------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border-strong);
+  background-color: var(--color-background-soft);
+}
+
+.empty__icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-raised);
+  color: var(--color-primary);
+  margin-bottom: var(--space-1);
+}
+
+.empty__icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.empty__title {
+  font-size: var(--text-body);
+}
+
+.empty__text {
+  font-size: var(--text-small);
+  color: var(--color-text-secondary);
+  max-width: 52ch;
+}
+
+.empty__note {
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+.empty__actions {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ---------- Estados de carga y error ---------- */
+
+.state {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.state h2 {
+  font-size: 1.25rem;
+}
+
+.state p {
+  color: var(--color-text-secondary);
+  font-size: var(--text-small);
+  max-width: 44ch;
+}
+
+.state--warning {
+  border-color: color-mix(in srgb, var(--color-warning) 40%, var(--color-border));
+}
+
+.state__icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface-raised);
+  color: var(--color-warning);
+}
+
+.state__icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.loading-status {
+  text-align: center;
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+}
+
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.skeleton {
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    100deg,
+    var(--color-surface) 30%,
+    var(--color-surface-hover) 50%,
+    var(--color-surface) 70%
+  );
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.4s var(--ease) infinite;
+}
+
+.skeleton--hero {
+  height: 11rem;
+  border-radius: var(--radius-xl);
+}
+
+.skeleton--row {
+  height: 4.5rem;
+}
+
+.skeleton--line {
+  height: 1.25rem;
+  width: 60%;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 180% 0;
+  }
+
+  to {
+    background-position: -60% 0;
+  }
+}
+
+/* ---------- Estado de la API ---------- */
+
+.api-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+/* El punto es decorativo: el estado siempre se dice también con texto. */
+.api-status__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: currentColor;
+  flex-shrink: 0;
+}
+
+.api-status[data-state="online"] {
+  color: var(--color-primary);
+  border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+}
+
+.api-status[data-state="offline"] {
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+}
+
+.api-status[data-state="loading"] .api-status__dot {
+  opacity: 0.5;
+}
+
+/* ---------- Mensajes de operación ---------- */
+
+.feedback {
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-small);
+  border: 1px solid transparent;
+}
+
+.feedback__label {
+  font-weight: var(--weight-bold);
+}
+
+.feedback--success {
+  background-color: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
+  color: var(--color-primary-soft);
+}
+
+.feedback--error {
+  background-color: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+  color: var(--color-danger);
+}
+
+/* ---------- Bienvenida ---------- */
+
+.welcome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-5) var(--space-5);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(90% 60% at 10% 0%, rgb(168 245 60 / 12%) 0%, transparent 70%),
+    var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+}
+
+.welcome__title {
+  font-size: var(--text-title);
+}
+
+.welcome__lead {
+  color: var(--color-text-secondary);
+  max-width: 40ch;
+}
+
+.welcome__points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-block: var(--space-1);
+}
+
+.welcome__point {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  font-size: var(--text-small);
+  color: var(--color-text-secondary);
+}
+
+.welcome__point-icon {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-xs);
+  background-color: var(--color-surface-raised);
+  color: var(--color-primary);
+}
+
+.welcome__point-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.welcome__note {
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Acceso (login / registro) ---------- */
+
+/* Reusa la tarjeta de bienvenida: la primera pantalla sin sesión tiene que verse como
+   Plata, no como un formulario aparte. */
+.auth .form {
+  margin-top: var(--space-1);
+}
+
+.auth .welcome__points {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+}
+
+/* Selector entre iniciar sesión y crear cuenta: un control segmentado, no dos pestañas
+   que compitan con la acción principal. */
+.auth__switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface-raised);
+}
+
+.auth__switch-option {
+  min-height: var(--control-height-sm);
+  border: none;
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.auth__switch-option:hover {
+  color: var(--color-text);
+}
+
+/* El estado activo se marca con el mismo lima que el resto de las acciones primarias.
+   No depende solo del color: es el único con fondo lleno. */
+.auth__switch-option[aria-pressed='true'] {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* ---------- Simulador ---------- */
+
+.sim-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sim-result {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-raised);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.sim-block__title {
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.sim-conclusion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+
+.sim-conclusion__label {
+  font-weight: var(--weight-bold);
+}
+
+.sim-conclusion__name {
+  color: var(--color-text-muted);
+}
+
+.sim-conclusion--ok {
+  background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
+  color: var(--color-primary);
+}
+
+.sim-conclusion--warn {
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
+  color: var(--color-warning);
+}
+
+.sim-conclusion--muted {
+  color: var(--color-text-muted);
+}
+
+.sim-summary {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0 var(--space-5);
+}
+
+.sim-summary__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sim-summary__row dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-label);
+}
+
+.sim-summary__row dd {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sim-alt {
+  background-color: var(--color-background-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+}
+
+.sim-alt__line {
+  font-size: var(--text-small);
+  color: var(--color-text-secondary);
+}
+
+.sim-alt__verdict {
+  margin-top: var(--space-2);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-label);
+}
+
+.sim-alt__verdict--ok {
+  color: var(--color-primary);
+}
+
+.sim-alt__verdict--muted {
+  color: var(--color-text-muted);
+}
+
+/* Detalle mes a mes en tarjetas: nunca una tabla con scroll horizontal. */
+.sim-months {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+.sim-month {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.sim-month__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.sim-month__name {
+  font-weight: var(--weight-bold);
+  text-transform: capitalize;
+}
+
+.sim-month__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2) var(--space-3);
+}
+
+.sim-month__grid dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-micro);
+}
+
+.sim-month__grid dd {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-small);
+  font-weight: var(--weight-semibold);
+}
+
+/* ---------- Registro asistido por IA ---------- */
+
+.ai-hint,
+.ai-explanation {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+}
+
+.ai-status {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-label);
+  color: var(--color-text-secondary);
+}
+
+.ai-status--warning {
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+}
+
+.ai-ambiguities {
+  margin: 0;
+  padding-left: var(--space-5);
+  list-style: disc;
+  color: var(--color-text-muted);
+  font-size: var(--text-label);
+}
+
+.ai-confidence {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-label);
+  color: var(--color-text-secondary);
+}
+
+.ai-confidence__dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-border-strong);
+}
+
+.ai-confidence--high .ai-confidence__dot {
+  background-color: var(--color-success);
+}
+
+.ai-confidence--medium .ai-confidence__dot {
+  background-color: var(--color-warning);
+}
+
+.ai-confidence--low .ai-confidence__dot {
+  background-color: var(--color-danger);
+}
+
+/* ---------- Copiloto ---------- */
+
+.copilot {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.copilot__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.copilot__badge {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-xs);
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.copilot__badge svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.copilot__title {
+  font-size: var(--text-section);
+}
+
+.copilot__subtitle {
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+.copilot__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.copilot__empty-text {
+  font-size: var(--text-label);
+  color: var(--color-text-secondary);
+}
+
+.copilot__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.copilot__suggestion {
+  min-height: var(--control-height-sm);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+  background-color: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+
+.copilot__suggestion:not(:disabled):hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.copilot__suggestion:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.copilot__messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 26rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.copilot__msg {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  max-width: 92%;
+  font-size: var(--text-small);
+  animation: copilot-in var(--t-slow) var(--ease);
+}
+
+.copilot__msg p {
+  margin: 0;
+}
+
+/* El backend ya decidió el formato de la respuesta: se respeta tal cual. */
+.copilot__text {
+  white-space: pre-line;
+}
+
+.copilot__msg--user {
+  align-self: flex-end;
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+  font-weight: var(--weight-semibold);
+  border-bottom-right-radius: var(--radius-xs);
+}
+
+.copilot__msg--assistant {
+  align-self: flex-start;
+  background-color: var(--color-surface-raised);
+  border-bottom-left-radius: var(--radius-xs);
+}
+
+@keyframes copilot-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.copilot__thinking {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.copilot__tools,
+.copilot__evidence {
+  margin-top: var(--space-2);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+.copilot__tools summary,
+.copilot__evidence summary {
+  cursor: pointer;
+  font-weight: var(--weight-semibold);
+}
+
+.copilot__tools p,
+.copilot__evidence ul {
+  margin: var(--space-1) 0 0;
+}
+
+.copilot__evidence ul {
+  padding-left: var(--space-4);
+  list-style: disc;
+}
+
+.copilot__approval {
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background-color: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--text-small);
+}
+
+.copilot__pending-note {
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+.copilot__error {
+  color: var(--color-danger);
+  font-size: var(--text-label);
+}
+
+.copilot__input {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.copilot__input .input {
+  flex: 1 1 auto;
+  border-radius: var(--radius-pill);
+}
+
+/* ---------- Aviso de cuota diaria de IA ---------- */
+
+/* Discreto a propósito: informa que quedan pocos usos sin interrumpir nada. Usa el color
+   de advertencia, pero el significado está en el texto, no en el color. */
+.ai-usage-notice {
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  border-left: 2px solid var(--color-warning);
+  padding-left: var(--space-2);
+}

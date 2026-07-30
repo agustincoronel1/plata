@@ -12,3 +12,7 @@ langgraph>=0.2,<0.4
 langgraph-checkpoint-postgres>=2,<3
 # RAG: tipo Vector para pgvector.
 pgvector>=0.3,<0.4
+# Verificación del JWT de Supabase Auth. El extra [crypto] trae `cryptography`, necesaria
+# para validar firmas asimétricas (RS256 / ES256) contra el JWKS público del proyecto.
+# PyJWT incluye PyJWKClient: descarga el JWKS, lo cachea y lo refresca ante un kid nuevo.
+PyJWT[crypto]>=2,<3

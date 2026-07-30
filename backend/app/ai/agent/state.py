@@ -32,4 +32,6 @@ class AgentState(TypedDict, total=False):
     verifier_ok: bool
     errors: list[str]
     final_answer: str
+    # Respuesta armada campo por campo por la capa de presentación (ver StructuredAnswer).
+    structured_answer: dict[str, Any] | None
     steps: int

@@ -31,7 +31,7 @@ export default function SimulationResult({ simulation }) {
         <span className="sim-conclusion__name"> · {simulation.purchase_name}</span>
       </p>
 
-      <h3 className="sim-result__subtitle">Resumen</h3>
+      <h3 className="sim-block__title">Resumen</h3>
       <dl className="sim-summary">
         <div className="sim-summary__row">
           <dt>Total</dt>
@@ -73,7 +73,7 @@ export default function SimulationResult({ simulation }) {
 
       {alt && (
         <div className="sim-alt">
-          <h3 className="sim-result__subtitle">Si empezás el mes siguiente</h3>
+          <h3 className="sim-block__title">Si empezás el mes siguiente</h3>
           <p className="sim-alt__line">
             Primera cuota el {formatDate(alt.first_installment_date)}:{' '}
             {alt.risk_months_count} mes(es) que superan reservas, margen mínimo{' '}
@@ -87,7 +87,7 @@ export default function SimulationResult({ simulation }) {
         </div>
       )}
 
-      <h3 className="sim-result__subtitle">Mes a mes</h3>
+      <h3 className="sim-block__title">Mes a mes</h3>
       <ul className="sim-months">
         {result.months.map((month) => {
           const state = marginState(month.breaks_reserve)

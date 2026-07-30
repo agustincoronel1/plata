@@ -11,6 +11,18 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.core.config import settings
+
+# Los evaluadores son offline por contrato: miden reglas determinísticas, no la calidad de un
+# proveedor pago. Con AI_PROVIDER=openai en backend/.env, indexar o clasificar
+# dispararía llamadas reales y facturadas al correr un eval. Forzar mock acá —el módulo que
+# todos importan— mantiene la promesa del docstring pase lo que pase en el entorno local.
+# La validación con el proveedor real vive solo en app/scripts/real_ai_smoke.py.
+settings.ai_provider = "mock"
+settings.ai_model = "mock-transaction-parser-v1"
+settings.ai_api_key = ""
+settings.ai_embedding_provider = "mock"
+
 EVALS_DIR = Path(__file__).resolve().parents[3] / "evals"
 
 

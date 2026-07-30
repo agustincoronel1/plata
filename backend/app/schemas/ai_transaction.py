@@ -1,4 +1,4 @@
-"""Contrato estructurado del flujo asistido por IA (Día 4).
+"""Contrato estructurado del flujo asistido por IA.
 
 Dos operaciones separadas y explícitas:
 
@@ -23,6 +23,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import TransactionType
+from app.schemas.ai_usage import AIUsageMetadata
 from app.schemas.common import PositiveMoney
 from app.schemas.transaction import TransactionResponse
 
@@ -103,6 +104,8 @@ class TransactionParseResponse(BaseModel):
     provider: str
     model: str
     latency_ms: int
+    # Cuota diaria restante, agregada por la capa de API. `None` sin límite aplicado.
+    usage: AIUsageMetadata | None = None
 
 
 class TransactionParseRequest(BaseModel):

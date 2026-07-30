@@ -18,7 +18,7 @@ from app.models import Transaction, TransactionType, UserProfile
 from app.schemas.transaction import TransactionCreate
 from app.services import transaction_service
 from app.services.exceptions import NotFoundError
-from tests.conftest import API, requires_postgres
+from tests.conftest import API, TEST_USER_ID, requires_postgres
 
 pytestmark = requires_postgres
 
@@ -238,7 +238,9 @@ def test_error_durante_la_operacion_hace_rollback(
     from app.services import profile_service
 
     perfil = profile_service.upsert_profile(
-        db_session, ProfileUpdate(name="Demo", current_balance=Decimal("620000.00"))
+        db_session,
+        TEST_USER_ID,
+        ProfileUpdate(name="Demo", current_balance=Decimal("620000.00")),
     )
     saldo_original = perfil.current_balance
 
@@ -251,7 +253,7 @@ def test_error_durante_la_operacion_hace_rollback(
         type=TransactionType.EXPENSE, amount=Decimal("20000"), category="comida"
     )
     with pytest.raises(SQLAlchemyError):
-        transaction_service.create_transaction(db_session, payload)
+        transaction_service.create_transaction(db_session, TEST_USER_ID, payload)
 
     db_session.refresh(perfil)
     assert perfil.current_balance == saldo_original

@@ -1,5 +1,9 @@
 """Herramientas del copiloto: acotadas, con schema Pydantic y user_id forzado por backend.
 
+El `user_id` vive en el ToolContext, que arma FastAPI a partir del JWT verificado y viaja
+por `config["configurable"]` de LangGraph, fuera del estado y fuera del prompt. El modelo
+no lo ve, no lo elige y no puede pasarlo como argumento: ningún schema de tool lo declara.
+
 Las tools de lectura reusan los servicios determinísticos. Las de escritura NUNCA persisten:
 crean un borrador (draft) que pausa el grafo hasta la aprobación humana. Ninguna tool expone
 SQL, la Session, el saldo mutable, delete ni update arbitrario. Todo devuelve JSON serializable
@@ -21,7 +25,6 @@ from sqlalchemy.orm import Session
 from app.ai.gateway import AIGateway
 from app.ai.rag.retriever import HybridRetriever, SearchFilters, select_relevant, selected_total
 from app.core.config import settings
-from app.core.constants import DEMO_USER_ID
 from app.schemas.dashboard import DashboardSummaryResponse
 from app.services import (
     ai_transaction_service,
@@ -35,17 +38,23 @@ from app.services.dashboard_service import (
     to_profile_input,
 )
 from app.services.draft_store import DraftStore
-from app.services.financial_engine import simulate_purchase, to_jsonable
+from app.services.financial_engine import ZERO, simulate_purchase, to_jsonable
 from app.services.profile_service import get_profile
 
 
 @dataclass
 class ToolContext:
+    """Contexto de ejecución de las tools. Lo arma el backend, nunca el modelo.
+
+    `user_id` no tiene valor por defecto a propósito: sin default es imposible correr una
+    tool sin decir de quién son los datos.
+    """
+
     session: Session
     draft_store: DraftStore
     gateway: AIGateway
     as_of: date
-    user_id: UUID = DEMO_USER_ID
+    user_id: UUID
 
 
 # --- Schemas de argumentos ---
@@ -82,6 +91,14 @@ class SimulateArgs(BaseModel):
     first_installment_date: date | None = None
 
 
+class OneTimePurchaseArgs(BaseModel):
+    """Compra al contado: un solo pago hoy. No hay cuotas ni fecha de primera cuota."""
+
+    model_config = ConfigDict(extra="forbid")
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    category: str | None = Field(default=None, max_length=60)
+
+
 class CreateTransactionArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=3, max_length=1000)
@@ -103,13 +120,15 @@ def _fmt_money(value: Decimal) -> str:
 
 
 def _get_financial_summary(ctx: ToolContext, args: SummaryArgs) -> dict[str, Any]:
-    data = build_dashboard_summary(ctx.session, args.as_of or ctx.as_of)
+    data = build_dashboard_summary(ctx.session, ctx.user_id, args.as_of or ctx.as_of)
     return DashboardSummaryResponse.model_validate(data).model_dump(mode="json")
 
 
 def _list_pending_commitments(ctx: ToolContext, args: EmptyArgs) -> dict[str, Any]:
     items = [
-        c for c in commitment_service.list_commitments(ctx.session) if c.status.value == "pending"
+        c
+        for c in commitment_service.list_commitments(ctx.session, ctx.user_id)
+        if c.status.value == "pending"
     ]
     total = sum((c.amount for c in items), Decimal("0"))
     return {
@@ -129,7 +148,7 @@ def _list_pending_commitments(ctx: ToolContext, args: EmptyArgs) -> dict[str, An
 
 
 def _get_recent_transactions(ctx: ToolContext, args: RecentArgs) -> dict[str, Any]:
-    txs = transaction_service.list_transactions(ctx.session)[: args.limit]
+    txs = transaction_service.list_transactions(ctx.session, ctx.user_id)[: args.limit]
     return {
         "transactions": [
             {
@@ -146,7 +165,7 @@ def _get_recent_transactions(ctx: ToolContext, args: RecentArgs) -> dict[str, An
 
 
 def _get_purchase_simulations(ctx: ToolContext, args: EmptyArgs) -> dict[str, Any]:
-    sims = simulation_service.list_purchase_simulations(ctx.session)
+    sims = simulation_service.list_purchase_simulations(ctx.session, ctx.user_id)
     return {
         "simulations": [
             {
@@ -162,8 +181,8 @@ def _get_purchase_simulations(ctx: ToolContext, args: EmptyArgs) -> dict[str, An
 
 
 def _simulate_purchase_preview(ctx: ToolContext, args: SimulateArgs) -> dict[str, Any]:
-    profile = get_profile(ctx.session)
-    commitments = commitment_service.list_commitments(ctx.session)
+    profile = get_profile(ctx.session, ctx.user_id)
+    commitments = commitment_service.list_commitments(ctx.session, ctx.user_id)
     first = args.first_installment_date or ctx.as_of
     result = simulate_purchase(
         to_profile_input(profile),
@@ -182,6 +201,35 @@ def _simulate_purchase_preview(ctx: ToolContext, args: SimulateArgs) -> dict[str
         "risk_months_count": result["risk_months_count"],
         "minimum_margin": str(result["minimum_margin_with_purchase"]),
         "start_next_month": to_jsonable(result["start_next_month"]),
+    }
+
+
+def _check_one_time_purchase(ctx: ToolContext, args: OneTimePurchaseArgs) -> dict[str, Any]:
+    """Compara una compra al contado contra el disponible seguro del motor financiero.
+
+    NO simula cuotas: no hay calendario, ni primera cuota, ni meses de riesgo. El único
+    cálculo propio es la resta `disponible - compra`; el disponible (que ya descuenta
+    compromisos, dinero protegido y colchón) lo sigue calculando `build_summary`.
+    """
+    summary = build_dashboard_summary(ctx.session, ctx.user_id, ctx.as_of)
+    data = DashboardSummaryResponse.model_validate(summary).model_dump(mode="json")
+    spendable = Decimal(data["spendable_total"])
+    remaining = spendable - args.amount
+    fits = remaining >= 0
+    return {
+        "amount": str(args.amount),
+        "category": args.category,
+        "fits": fits,
+        "spendable_total": data["spendable_total"],
+        "remaining_after_purchase": str(remaining if fits else Decimal("0.00")),
+        "over_budget_amount": str(ZERO if fits else -remaining),
+        "current_balance": data["current_balance"],
+        "pending_commitments_amount": data["pending_commitments_amount"],
+        "protected_amount": data["protected_amount"],
+        "safety_buffer": data["safety_buffer"],
+        "days_until_income": data["days_until_income"],
+        "next_income_date": data["next_income_date"],
+        "daily_safe_to_spend": data["daily_safe_to_spend"],
     }
 
 
@@ -240,7 +288,7 @@ def _infer_tx_type(query: str) -> str | None:
 
 def _create_transaction_draft(ctx: ToolContext, args: CreateTransactionArgs) -> dict[str, Any]:
     parsed = ai_transaction_service.parse_transaction(
-        ctx.gateway, ctx.draft_store, args.text, as_of=ctx.as_of
+        ctx.gateway, ctx.draft_store, args.text, as_of=ctx.as_of, user_id=ctx.user_id
     )
     tx = parsed.transaction
     summary = (
@@ -269,7 +317,7 @@ def _create_commitment_draft(ctx: ToolContext, args: CreateCommitmentArgs) -> di
             "category": args.category.lower(),
         },
     }
-    draft = ctx.draft_store.create(payload=payload, source_text=args.name)
+    draft = ctx.draft_store.create(payload=payload, source_text=args.name, user_id=ctx.user_id)
     return {
         "draft_id": str(draft.draft_id),
         "kind": "create_commitment",
@@ -305,6 +353,9 @@ TOOLS: dict[str, Tool] = {
     ),
     "simulate_purchase_preview": Tool(
         "simulate_purchase_preview", SimulateArgs, _simulate_purchase_preview, False
+    ),
+    "check_one_time_purchase": Tool(
+        "check_one_time_purchase", OneTimePurchaseArgs, _check_one_time_purchase, False
     ),
     "search_transactions": Tool("search_transactions", SearchArgs, _search_transactions, False),
     "create_transaction_draft": Tool(

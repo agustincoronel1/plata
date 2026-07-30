@@ -8,6 +8,11 @@ un `pending` vencido se marca `expired` al tocarlo.
 
 Cada método abre su propia sesión corta (el store es un singleton del proceso, no vive
 dentro del ciclo de un request). Nunca persiste secretos: solo el borrador serializado.
+
+El dueño viaja en el WHERE de la MISMA sentencia que el id, incluido el UPDATE atómico
+de la confirmación. Buscar primero y comparar el dueño después dejaría una ventana para
+confirmar el borrador ajeno; así, un borrador de otra persona simplemente no matchea y
+se comporta igual que uno inexistente (404).
 """
 
 from __future__ import annotations
@@ -26,7 +31,6 @@ from app.ai.exceptions import (
     DraftExpiredError,
     DraftNotFoundError,
 )
-from app.core.constants import DEMO_USER_ID
 from app.core.database import SessionLocal
 from app.models.ai_draft import AIDraft
 from app.services.draft_store import DEFAULT_TTL_SECONDS, Draft, DraftStatus
@@ -57,11 +61,11 @@ class PostgresDraftStore:
         with SessionLocal() as session:
             yield session, True
 
-    def create(self, payload: dict[str, Any], source_text: str) -> Draft:
+    def create(self, payload: dict[str, Any], source_text: str, *, user_id: UUID) -> Draft:
         now = datetime.now(UTC)
         row = AIDraft(
             id=uuid4(),
-            user_id=DEMO_USER_ID,
+            user_id=user_id,
             task=_TASK,
             source_text=source_text,
             payload=payload,
@@ -77,43 +81,53 @@ class PostgresDraftStore:
                 session.refresh(row)
             return _to_draft(row)
 
-    def get(self, draft_id: UUID) -> Draft:
+    def get(self, draft_id: UUID, *, user_id: UUID) -> Draft:
         with self._session_scope() as (session, owns_session):
-            row = self._expire_if_needed(session, draft_id)
+            row = self._expire_if_needed(session, draft_id, user_id)
             if row.status == DraftStatus.EXPIRED.value:
                 raise DraftExpiredError
             if owns_session:
                 session.commit()
             return _to_draft(row)
 
-    def claim_for_confirmation(self, draft_id: UUID) -> Draft:
+    def claim_for_confirmation(self, draft_id: UUID, *, user_id: UUID) -> Draft:
         with self._session_scope() as (session, owns_session):
-            self._expire_if_needed(session, draft_id)
+            self._expire_if_needed(session, draft_id, user_id)
             row = session.execute(
                 update(AIDraft)
-                .where(AIDraft.id == draft_id, AIDraft.status == DraftStatus.PENDING.value)
+                .where(
+                    AIDraft.id == draft_id,
+                    AIDraft.user_id == user_id,
+                    AIDraft.status == DraftStatus.PENDING.value,
+                )
                 .values(status=DraftStatus.CONFIRMING.value, version=AIDraft.version + 1)
                 .returning(AIDraft)
             ).scalar_one_or_none()
             if row is None:
                 if owns_session:
                     session.commit()
-                self._raise_not_claimable(draft_id, session if not owns_session else None)
+                self._raise_not_claimable(draft_id, user_id, session if not owns_session else None)
             if owns_session:
                 session.commit()
             return _to_draft(row)
 
-    def release_to_pending(self, draft_id: UUID) -> Draft:
-        return self._simple_transition(draft_id, DraftStatus.CONFIRMING, DraftStatus.PENDING)
-
-    def mark_confirmed(self, draft_id: UUID) -> Draft:
+    def release_to_pending(self, draft_id: UUID, *, user_id: UUID) -> Draft:
         return self._simple_transition(
-            draft_id, DraftStatus.CONFIRMING, DraftStatus.CONFIRMED, stamp="confirmed_at"
+            draft_id, user_id, DraftStatus.CONFIRMING, DraftStatus.PENDING
         )
 
-    def mark_rejected(self, draft_id: UUID) -> Draft:
+    def mark_confirmed(self, draft_id: UUID, *, user_id: UUID) -> Draft:
+        return self._simple_transition(
+            draft_id,
+            user_id,
+            DraftStatus.CONFIRMING,
+            DraftStatus.CONFIRMED,
+            stamp="confirmed_at",
+        )
+
+    def mark_rejected(self, draft_id: UUID, *, user_id: UUID) -> Draft:
         with self._session_scope() as (session, owns_session):
-            self._expire_if_needed(session, draft_id)
+            self._expire_if_needed(session, draft_id, user_id)
             values: dict[str, Any] = {
                 "status": DraftStatus.REJECTED.value,
                 "rejected_at": datetime.now(UTC),
@@ -121,14 +135,18 @@ class PostgresDraftStore:
             }
             row = session.execute(
                 update(AIDraft)
-                .where(AIDraft.id == draft_id, AIDraft.status == DraftStatus.PENDING.value)
+                .where(
+                    AIDraft.id == draft_id,
+                    AIDraft.user_id == user_id,
+                    AIDraft.status == DraftStatus.PENDING.value,
+                )
                 .values(**values)
                 .returning(AIDraft)
             ).scalar_one_or_none()
             if row is None:
                 if owns_session:
                     session.commit()
-                self._raise_not_claimable(draft_id, session if not owns_session else None)
+                self._raise_not_claimable(draft_id, user_id, session if not owns_session else None)
             if owns_session:
                 session.commit()
             return _to_draft(row)
@@ -138,6 +156,7 @@ class PostgresDraftStore:
     def _simple_transition(
         self,
         draft_id: UUID,
+        user_id: UUID,
         expected: DraftStatus,
         new: DraftStatus,
         *,
@@ -149,41 +168,49 @@ class PostgresDraftStore:
                 values[stamp] = datetime.now(UTC)
             row = session.execute(
                 update(AIDraft)
-                .where(AIDraft.id == draft_id, AIDraft.status == expected.value)
+                .where(
+                    AIDraft.id == draft_id,
+                    AIDraft.user_id == user_id,
+                    AIDraft.status == expected.value,
+                )
                 .values(**values)
                 .returning(AIDraft)
             ).scalar_one_or_none()
             if row is None:
                 if owns_session:
                     session.commit()
-                self._raise_not_claimable(draft_id, session if not owns_session else None)
+                self._raise_not_claimable(draft_id, user_id, session if not owns_session else None)
             if owns_session:
                 session.commit()
             return _to_draft(row)
 
-    def _expire_if_needed(self, session: Session, draft_id: UUID) -> AIDraft:
+    def _expire_if_needed(self, session: Session, draft_id: UUID, user_id: UUID) -> AIDraft:
         now = datetime.now(UTC)
         session.execute(
             update(AIDraft)
             .where(
                 AIDraft.id == draft_id,
+                AIDraft.user_id == user_id,
                 AIDraft.status == DraftStatus.PENDING.value,
                 AIDraft.expires_at <= now,
             )
             .values(status=DraftStatus.EXPIRED.value)
         )
         row = session.get(AIDraft, draft_id, populate_existing=True)
-        if row is None:
+        if row is None or row.user_id != user_id:
             raise DraftNotFoundError
         return row
 
-    def _raise_not_claimable(self, draft_id: UUID, session: Session | None = None) -> None:
+    def _raise_not_claimable(
+        self, draft_id: UUID, user_id: UUID, session: Session | None = None
+    ) -> None:
         if session is not None:
             row = session.get(AIDraft, draft_id)
         else:
             with SessionLocal() as lookup:
                 row = lookup.get(AIDraft, draft_id)
-        if row is None:
+        # Un borrador ajeno no se distingue de uno inexistente: mismo 404.
+        if row is None or row.user_id != user_id:
             raise DraftNotFoundError
         if row.status == DraftStatus.EXPIRED.value:
             raise DraftExpiredError
@@ -193,6 +220,7 @@ class PostgresDraftStore:
 def _to_draft(row: AIDraft) -> Draft:
     return Draft(
         draft_id=row.id,
+        user_id=row.user_id,
         payload=row.payload,
         source_text=row.source_text or "",
         status=DraftStatus(row.status),

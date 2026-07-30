@@ -1,9 +1,10 @@
 """Modelos de SQLAlchemy.
 
-Importar este paquete registra las cuatro tablas en `Base.metadata`. Alembic depende
+Importar este paquete registra todas las tablas en `Base.metadata`. Alembic depende
 de eso para el autogenerate.
 """
 
+from app.models.ai_daily_usage import AIDailyUsage
 from app.models.ai_draft import AIDraft
 from app.models.commitment import Commitment
 from app.models.enums import CommitmentStatus, TransactionType
@@ -13,6 +14,7 @@ from app.models.transaction_search import TransactionSearchDocument
 from app.models.user_profile import UserProfile
 
 __all__ = [
+    "AIDailyUsage",
     "AIDraft",
     "Commitment",
     "CommitmentStatus",

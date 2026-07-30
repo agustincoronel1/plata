@@ -1,0 +1,288 @@
+/**
+ * Controles: botones, campos, formularios y diálogos.
+ */
+
+/* ---------- Botones ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* El lima guía una sola acción prioritaria por bloque. */
+.btn--primary {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.btn--primary:not(:disabled):hover {
+  background-color: var(--color-primary-soft);
+  transform: translateY(-1px);
+}
+
+.btn--secondary {
+  background-color: var(--color-surface-raised);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.btn--secondary:not(:disabled):hover {
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-primary);
+}
+
+.btn--ghost {
+  background-color: transparent;
+  border-color: var(--color-border-strong);
+  color: var(--color-text-secondary);
+}
+
+.btn--ghost:not(:disabled):hover {
+  color: var(--color-text);
+  border-color: var(--color-primary);
+}
+
+.btn--danger {
+  background-color: var(--color-danger);
+  color: #2a0b0b;
+}
+
+.btn--danger:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+.btn--small {
+  min-height: var(--control-height-sm);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-micro);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+/* Botón de icono: siempre con aria-label, nunca con emoji. */
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: var(--tap-target);
+  height: var(--tap-target);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.icon-btn svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.icon-btn:not(:disabled):hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.icon-btn--danger:not(:disabled):hover {
+  color: var(--color-danger);
+}
+
+.icon-btn--primary {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.icon-btn--primary:not(:disabled):hover {
+  background-color: var(--color-primary-soft);
+  color: var(--color-on-primary);
+}
+
+/* ---------- Formularios ---------- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field--check {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target);
+}
+
+.field__label {
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-secondary);
+}
+
+.field__hint {
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+.field__error {
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--color-danger);
+}
+
+.input {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-background-soft);
+  color: var(--color-text);
+  font-size: var(--text-small);
+  font-weight: var(--weight-medium);
+  transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input:hover {
+  border-color: var(--color-border-strong);
+  background-color: var(--color-surface);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+  border-color: var(--color-primary);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+textarea.input {
+  min-height: 5.5rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+select.input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--color-text-muted) 50%),
+    linear-gradient(135deg, var(--color-text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 1.15rem) 55%, calc(100% - 0.8rem) 55%;
+  background-size: 0.35rem 0.35rem, 0.35rem 0.35rem;
+  background-repeat: no-repeat;
+  padding-right: var(--space-7);
+}
+
+.checkbox {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--color-primary);
+}
+
+.form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+/* ---------- Diálogos ---------- */
+
+.modal {
+  border: none;
+  padding: 0;
+  background: transparent;
+  max-width: min(34rem, 94vw);
+  width: 100%;
+  color: var(--color-text);
+}
+
+.modal::backdrop {
+  background-color: rgb(4 6 4 / 72%);
+  backdrop-filter: blur(4px);
+}
+
+.modal__panel {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-5);
+  max-height: 88dvh;
+  overflow-y: auto;
+  animation: modal-in var(--t-base) var(--ease);
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.modal__title {
+  font-size: 1.25rem;
+}
+
+.modal__text {
+  color: var(--color-text-secondary);
+  font-size: var(--text-small);
+  margin-bottom: var(--space-4);
+}

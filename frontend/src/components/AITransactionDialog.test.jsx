@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -120,6 +120,76 @@ describe('AITransactionDialog', () => {
     expect(button).toBeDisabled()
     await user.click(button)
     expect(api.confirmAITransaction).not.toHaveBeenCalled()
+  })
+
+  it('no permite un segundo envío mientras la IA está interpretando', async () => {
+    let resolveParse
+    api.parseAITransaction.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveParse = resolve
+        }),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.type(screen.getByLabelText(/Cont/i), 'Gasté 25 lucas')
+    await user.click(screen.getByRole('button', { name: /Interpretar/i }))
+
+    // Estado de carga visible y botón bloqueado mientras la petición sigue en curso.
+    const pendingButton = await screen.findByRole('button', { name: /Interpretando/i })
+    expect(pendingButton).toBeDisabled()
+    await user.click(pendingButton)
+    expect(api.parseAITransaction).toHaveBeenCalledTimes(1)
+
+    resolveParse(makeParseDraft())
+    expect(await screen.findByText(/todavía no registró nada/i)).toBeInTheDocument()
+  })
+
+  it('muestra el mensaje de timeout de la IA y no el de backend apagado', async () => {
+    api.parseAITransaction.mockRejectedValue(
+      new ApiError('La IA tardó más de lo esperado. Intentá nuevamente.', {
+        status: 0,
+        timeout: true,
+      }),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.type(screen.getByLabelText(/Cont/i), 'Gasté 25 lucas')
+    await user.click(screen.getByRole('button', { name: /Interpretar/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/La IA tardó más de lo esperado/i)
+    expect(screen.queryByText(/Revisá que el backend esté activo/i)).not.toBeInTheDocument()
+    // El estado se restaura: se puede volver a intentar (sin reintento automático).
+    expect(screen.getByRole('button', { name: /Interpretar/i })).toBeEnabled()
+    expect(api.parseAITransaction).toHaveBeenCalledTimes(1)
+  })
+
+  it('no permite confirmar dos veces el mismo borrador', async () => {
+    api.parseAITransaction.mockResolvedValue(makeParseDraft())
+    let resolveConfirm
+    api.confirmAITransaction.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveConfirm = resolve
+        }),
+    )
+    const onRegistered = vi.fn()
+    const user = userEvent.setup()
+    renderDialog({ onRegistered })
+
+    await user.type(screen.getByLabelText(/Cont/i), 'Gasté 25 lucas')
+    await user.click(screen.getByRole('button', { name: /Interpretar/i }))
+    await user.click(await screen.findByRole('button', { name: /Confirmar y registrar/i }))
+
+    const pendingButton = await screen.findByRole('button', { name: /Registrando/i })
+    expect(pendingButton).toBeDisabled()
+    await user.click(pendingButton)
+    expect(api.confirmAITransaction).toHaveBeenCalledTimes(1)
+
+    resolveConfirm({ draft_id: 'x', transaction: { id: 't1' } })
+    await waitFor(() => expect(onRegistered).toHaveBeenCalledOnce())
   })
 
   it('ofrece el formulario manual si la interpretación falla (fallback)', async () => {

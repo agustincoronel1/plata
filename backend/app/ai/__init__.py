@@ -1,4 +1,4 @@
-"""Base de AI Engineering de Plata (Día 4).
+"""Base de AI Engineering de Plata.
 
 Estructura deliberadamente pequeña:
 

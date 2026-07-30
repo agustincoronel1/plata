@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.constants import DEMO_USER_ID
 from app.models import PurchaseSimulation
 from app.schemas.simulation import PurchaseSimulationCreate
 from app.services import commitment_service
@@ -27,14 +27,21 @@ RECENT_LIMIT = 10
 
 
 def create_purchase_simulation(
-    session: Session, payload: PurchaseSimulationCreate, as_of: date | None = None
+    session: Session,
+    user_id: UUID,
+    payload: PurchaseSimulationCreate,
+    as_of: date | None = None,
 ) -> PurchaseSimulation:
-    """Corre la simulación, la persiste y la devuelve. Un único commit; rollback si falla."""
-    profile = get_profile_or_none(session)
+    """Corre la simulación, la persiste y la devuelve. Un commit; rollback si falla.
+
+    Simula con el perfil y los compromisos DEL USUARIO: el disponible contra el que se
+    compara la compra es el suyo, no el de otra persona.
+    """
+    profile = get_profile_or_none(session, user_id)
     if profile is None:
         raise NotFoundError(PROFILE_NOT_FOUND)
 
-    commitments = commitment_service.list_commitments(session)
+    commitments = commitment_service.list_commitments(session, user_id)
     today = as_of or date.today()
 
     result = simulate_purchase(
@@ -53,7 +60,7 @@ def create_purchase_simulation(
         installment_amount = max(item["amount"] for item in result["schedule"])
 
     simulation = PurchaseSimulation(
-        user_id=DEMO_USER_ID,
+        user_id=user_id,
         purchase_name=payload.purchase_name,
         total_amount=payload.total_amount,
         installments=payload.installments,
@@ -73,12 +80,12 @@ def create_purchase_simulation(
     return simulation
 
 
-def list_purchase_simulations(session: Session) -> list[PurchaseSimulation]:
-    """Las simulaciones del perfil demo, de la más reciente a la más antigua (máx. 10)."""
+def list_purchase_simulations(session: Session, user_id: UUID) -> list[PurchaseSimulation]:
+    """Las simulaciones del usuario, de la más reciente a la más antigua (máx. 10)."""
     return list(
         session.execute(
             select(PurchaseSimulation)
-            .where(PurchaseSimulation.user_id == DEMO_USER_ID)
+            .where(PurchaseSimulation.user_id == user_id)
             .order_by(PurchaseSimulation.created_at.desc())
             .limit(RECENT_LIMIT)
         ).scalars()

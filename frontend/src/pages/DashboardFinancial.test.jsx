@@ -45,7 +45,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('Dashboard financiero (Día 3)', () => {
+describe('Dashboard financiero', () => {
   it('consulta el resumen financiero al cargar', async () => {
     render(<DashboardPage />)
     await ready()

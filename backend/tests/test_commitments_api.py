@@ -1,7 +1,7 @@
 """Tests de integración de /api/v1/commitments. Transaccionales contra PostgreSQL.
 
-Regla central del Día 2 que estos tests fijan: los compromisos NO tocan el saldo, ni al
-crearse, ni al editarse, ni al marcarse pagados o cancelados.
+Regla central que estos tests fijan: los compromisos NO tocan el saldo, ni al crearse, ni
+al editarse, ni al marcarse pagados o cancelados.
 """
 
 from collections.abc import Callable
@@ -119,7 +119,7 @@ def test_marcar_compromiso_pagado_no_modifica_el_saldo(
 
     assert response.status_code == 200
     assert response.json()["status"] == "paid"
-    # El saldo no se toca: la política del Día 2 lo prohíbe explícitamente.
+    # El saldo no se toca: la política de compromisos lo prohíbe explícitamente.
     assert _balance(client) == Decimal("620000.00")
     # Tampoco se creó una transacción.
     assert client.get(f"{API}/transactions").json() == []

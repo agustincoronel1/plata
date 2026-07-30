@@ -1,4 +1,8 @@
-"""Endpoint del dashboard financiero: /api/v1/dashboard/summary."""
+"""Endpoint del dashboard financiero: /api/v1/dashboard/summary.
+
+Exige sesión y resume la situación de quien hizo la petición: su perfil y sus compromisos.
+El motor financiero no cambió; solo cambió de quién son los datos que recibe.
+"""
 
 from typing import Annotated
 
@@ -6,6 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import CurrentUser
 from app.schemas.dashboard import DashboardSummaryResponse
 from app.services import dashboard_service
 
@@ -30,7 +35,8 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
     ),
 )
 def get_dashboard_summary(
+    current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> DashboardSummaryResponse:
-    """Resumen del perfil demo. 404 si el perfil no existe."""
-    return dashboard_service.build_dashboard_summary(db)
+    """Resumen del usuario autenticado. 404 si su perfil no existe."""
+    return dashboard_service.build_dashboard_summary(db, user_id=current_user.id)

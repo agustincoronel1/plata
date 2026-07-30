@@ -38,6 +38,32 @@ def test_monto_inventado_se_rechaza() -> None:
     assert any("sin respaldo" in r for r in reasons)
 
 
+def test_respuesta_con_campo_interno_se_rechaza() -> None:
+    """El prompt no alcanza: si el texto nombra un campo interno, no se muestra."""
+    ok, reasons = verify(
+        answer="Tu spendable_total es $148.000.",
+        tool_results=TOOL_RESULTS,
+        evidence=EVIDENCE,
+        pending_action=None,
+        approval_required=False,
+    )
+    assert ok is False
+    assert any("spendable_total" in r for r in reasons)
+
+
+def test_margen_negativo_se_puede_contar_en_positivo() -> None:
+    """'Quedarías $3.000 por debajo' está respaldado por un margen de -3000."""
+    ok, reasons = verify(
+        answer="Quedarías $3.000 por debajo de tu colchón.",
+        tool_results=[{"name": "x", "ok": True, "data": {"minimum_margin": "-3000.00"}}],
+        evidence=[],
+        pending_action=None,
+        approval_required=False,
+    )
+    assert ok is True
+    assert reasons == []
+
+
 def test_escritura_sin_aprobacion_se_marca() -> None:
     ok, reasons = verify(
         answer="Listo.",

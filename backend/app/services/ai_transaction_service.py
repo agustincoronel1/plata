@@ -1,4 +1,4 @@
-"""Servicio de registro de movimientos asistido por IA (Día 4).
+"""Servicio de registro de movimientos asistido por IA.
 
 Independiente de FastAPI. Dos operaciones separadas:
 
@@ -10,6 +10,10 @@ Independiente de FastAPI. Dos operaciones separadas:
 - `reject_transaction`: marca el borrador `rejected`. No toca la base.
 
 El modelo propone; la persona dispone. La IA nunca crea el movimiento por sí sola.
+
+`user_id` es keyword-only y obligatorio en las tres operaciones. Sale del JWT verificado:
+el borrador se crea a nombre de esa persona y solo esa persona puede confirmarlo o
+rechazarlo. Un borrador ajeno responde 404, igual que uno inexistente.
 """
 
 from __future__ import annotations
@@ -52,8 +56,13 @@ def parse_transaction(
     store: DraftStore,
     source_text: str,
     as_of: date | None = None,
+    *,
+    user_id: uuid.UUID,
 ) -> TransactionParseResponse:
-    """Interpreta `source_text`, aplica reglas de negocio y crea un borrador temporal."""
+    """Interpreta `source_text`, aplica reglas de negocio y crea un borrador temporal.
+
+    El borrador queda a nombre de `user_id`. No toca la base financiera ni el saldo.
+    """
     today = as_of or date.today()
     trace_id = uuid.uuid4().hex
 
@@ -72,7 +81,7 @@ def parse_transaction(
         "explanation": output.explanation,
         "is_confirmable": is_confirmable,
     }
-    draft = store.create(payload=payload, source_text=source_text)
+    draft = store.create(payload=payload, source_text=source_text, user_id=user_id)
 
     status = (
         STATUS_UNKNOWN
@@ -118,6 +127,8 @@ def confirm_transaction(
     store: DraftStore,
     draft_id: uuid.UUID,
     request: TransactionConfirmRequest,
+    *,
+    user_id: uuid.UUID,
 ) -> TransactionConfirmationResponse:
     """Confirma un borrador y persiste el movimiento reusando `transaction_service`.
 
@@ -130,23 +141,26 @@ def confirm_transaction(
         raise AIDraftValidationError(detail="Tenés que confirmar explícitamente el movimiento.")
 
     tx_store, same_transaction = _bind_store_to_session(store, session)
-    draft = tx_store.claim_for_confirmation(draft_id)
+    # El reclamo atómico ya filtra por dueño: un borrador ajeno no matchea y es 404.
+    draft = tx_store.claim_for_confirmation(draft_id, user_id=user_id)
 
     try:
         tx_payload, corrections, tx_create = _build_transaction_payload(draft, request)
         if same_transaction:
-            transaction = transaction_service.create_transaction_no_commit(session, tx_create)
-            tx_store.mark_confirmed(draft_id)
+            transaction = transaction_service.create_transaction_no_commit(
+                session, user_id, tx_create
+            )
+            tx_store.mark_confirmed(draft_id, user_id=user_id)
             session.commit()
             session.refresh(transaction)
         else:
-            transaction = transaction_service.create_transaction(session, tx_create)
-            tx_store.mark_confirmed(draft_id)
+            transaction = transaction_service.create_transaction(session, user_id, tx_create)
+            tx_store.mark_confirmed(draft_id, user_id=user_id)
     except Exception:
         if session is not None:
             session.rollback()
         if not same_transaction:
-            tx_store.release_to_pending(draft_id)
+            tx_store.release_to_pending(draft_id, user_id=user_id)
         raise
 
     corrected_fields = sorted(corrections.keys())
@@ -166,9 +180,9 @@ def confirm_transaction(
     )
 
 
-def reject_transaction(store: DraftStore, draft_id: uuid.UUID) -> None:
-    """Marca el borrador como rechazado. No crea movimiento ni modifica el saldo."""
-    store.mark_rejected(draft_id)
+def reject_transaction(store: DraftStore, draft_id: uuid.UUID, *, user_id: uuid.UUID) -> None:
+    """Marca el borrador propio como rechazado. No crea movimiento ni modifica el saldo."""
+    store.mark_rejected(draft_id, user_id=user_id)
 
 
 def _bind_store_to_session(store: DraftStore, session: Session | None) -> tuple[DraftStore, bool]:

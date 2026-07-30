@@ -1,13 +1,24 @@
 """Orquestación del copiloto: corre el grafo, pausa en escrituras y reanuda al aprobar.
 
-Independiente de FastAPI. El estado conversacional vive en el checkpointer del grafo (por
-`conversation_id`). La acción pendiente se recupera SIEMPRE del estado persistido, nunca de
-argumentos reenviados por el frontend.
+Independiente de FastAPI. El estado conversacional vive en el checkpointer del grafo. La
+acción pendiente se recupera SIEMPRE del estado persistido, nunca de argumentos reenviados
+por el frontend.
+
+Aislamiento entre cuentas: el `thread_id` del checkpointer NO es el `conversation_id` a
+secas, sino `<user_id>:<conversation_id>`. Esa es la pieza clave — el `conversation_id`
+viaja por la URL, así que si fuera el thread completo alcanzaría con conocerlo para leer o
+reanudar la conversación de otra persona. Con el usuario adentro, un id ajeno resuelve un
+hilo distinto (vacío) y no hay nada que filtrar: no hace falta tabla ni migración.
+
+`user_id` es keyword-only y obligatorio en las tres entradas públicas. Sale del JWT
+verificado y viaja a las tools por `config["configurable"]`, fuera del estado y fuera del
+prompt: el modelo no lo ve ni puede cambiarlo.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 
@@ -22,13 +33,13 @@ from app.ai.agent.schemas import (
     ConversationMessage,
     ConversationResponse,
     PendingAction,
+    StructuredAnswer,
     ToolCallTrace,
 )
 from app.ai.agent.tools import ToolContext
 from app.ai.exceptions import AIError, DraftNotFoundError
 from app.ai.gateway import get_ai_gateway
 from app.core.config import settings
-from app.core.constants import DEMO_USER_ID
 from app.schemas.ai_transaction import TransactionConfirmRequest
 from app.schemas.commitment import CommitmentCreate
 from app.services import ai_transaction_service, commitment_service
@@ -53,19 +64,37 @@ class PendingActionAwaitingResolutionError(AIError):
 
 
 def _context(
-    session: Session, draft_store: DraftStore | None, gateway: Any, as_of: date | None
+    session: Session,
+    user_id: uuid.UUID,
+    draft_store: DraftStore | None,
+    gateway: Any,
+    as_of: date | None,
 ) -> ToolContext:
     return ToolContext(
         session=session,
         draft_store=draft_store or get_draft_store(),
         gateway=gateway or get_ai_gateway(),
         as_of=as_of or date.today(),
+        user_id=user_id,
     )
+
+
+def _thread_id(user_id: uuid.UUID, conversation_id: uuid.UUID) -> str:
+    """Hilo del checkpointer, siempre acotado al dueño.
+
+    El `conversation_id` de otra persona resuelve un hilo distinto —vacío— en lugar de su
+    conversación. No hay 403 que revele que existe: sencillamente no hay nada ahí.
+    """
+    return f"{user_id}:{conversation_id}"
 
 
 def _config(conversation_id: uuid.UUID, ctx: ToolContext, brain: Any) -> dict[str, Any]:
     return {
-        "configurable": {"thread_id": str(conversation_id), "ctx": ctx, "brain": brain},
+        "configurable": {
+            "thread_id": _thread_id(ctx.user_id, conversation_id),
+            "ctx": ctx,
+            "brain": brain,
+        },
         "recursion_limit": RECURSION_LIMIT,
     }
 
@@ -75,13 +104,23 @@ def chat(
     message: str,
     conversation_id: uuid.UUID | None = None,
     *,
+    user_id: uuid.UUID,
     as_of: date | None = None,
     draft_store: DraftStore | None = None,
     gateway: Any = None,
     brain: Any = None,
+    before_provider: Callable[[], None] | None = None,
 ) -> ChatResponse:
+    """Corre un turno del copiloto.
+
+    `before_provider` es un gancho que se ejecuta en el único punto donde ya se sabe que
+    esta petición va a invocar al modelo: después del chequeo de acción pendiente y antes
+    de arrancar el grafo. La API lo usa para reservar cuota diaria ahí y no antes, porque
+    un 409 por acción pendiente no gasta ninguna llamada. Quien llama al servicio sin
+    pasarlo —evaluadores offline, smoke real— corre sin límites, que es lo correcto.
+    """
     conversation_id = conversation_id or uuid.uuid4()
-    ctx = _context(session, draft_store, gateway, as_of)
+    ctx = _context(session, user_id, draft_store, gateway, as_of)
     brain = brain or build_brain(settings)
     trace_id = uuid.uuid4().hex
 
@@ -91,11 +130,17 @@ def chat(
     if _active_pending_action(snapshot):
         raise PendingActionAwaitingResolutionError
 
+    # Desde acá sí o sí se llama al modelo: es el punto exacto donde corresponde cobrar.
+    if before_provider is not None:
+        before_provider()
+
     result = graph.invoke(
         {
             "input": message,
             "conversation_id": str(conversation_id),
-            "user_id": str(DEMO_USER_ID),
+            # Informativo para las trazas. El dueño autoritativo es `ctx.user_id`:
+            # el estado se persiste en el checkpoint y no es una fuente confiable.
+            "user_id": str(user_id),
             "trace_id": trace_id,
             "approved": None,
             "agentic_done": False,
@@ -105,6 +150,7 @@ def chat(
             "pending_action": None,
             "approval_required": False,
             "final_answer": "",
+            "structured_answer": None,
         },
         config,
     )
@@ -117,13 +163,14 @@ def resume(
     conversation_id: uuid.UUID,
     action_id: uuid.UUID,
     *,
+    user_id: uuid.UUID,
     approve: bool,
     as_of: date | None = None,
     draft_store: DraftStore | None = None,
     gateway: Any = None,
     brain: Any = None,
 ) -> ChatResponse:
-    ctx = _context(session, draft_store, gateway, as_of)
+    ctx = _context(session, user_id, draft_store, gateway, as_of)
     brain = brain or build_brain(settings)
     graph = get_compiled_graph()
     config = _config(conversation_id, ctx, brain)
@@ -148,9 +195,14 @@ def _active_pending_action(snapshot: Any) -> dict[str, Any] | None:
     return None
 
 
-def get_conversation(conversation_id: uuid.UUID) -> ConversationResponse:
+def get_conversation(conversation_id: uuid.UUID, *, user_id: uuid.UUID) -> ConversationResponse:
+    """Historial de una conversación propia.
+
+    Una conversación ajena resuelve un hilo vacío: se responde con la lista de mensajes
+    vacía, sin confirmar que ese `conversation_id` exista para otra persona.
+    """
     graph = get_compiled_graph()
-    config = {"configurable": {"thread_id": str(conversation_id)}}
+    config = {"configurable": {"thread_id": _thread_id(user_id, conversation_id)}}
     snapshot = graph.get_state(config)
     values = snapshot.values if snapshot else {}
     messages = [
@@ -168,14 +220,18 @@ def apply_pending_action(ctx: ToolContext, pending: dict[str, Any], *, reject: b
 
     if reject:
         try:
-            ctx.draft_store.mark_rejected(draft_id)
+            ctx.draft_store.mark_rejected(draft_id, user_id=ctx.user_id)
         except DraftNotFoundError:
             pass
         return "Descartado."
 
     if kind == "create_transaction":
         result = ai_transaction_service.confirm_transaction(
-            ctx.session, ctx.draft_store, draft_id, TransactionConfirmRequest(confirmed=True)
+            ctx.session,
+            ctx.draft_store,
+            draft_id,
+            TransactionConfirmRequest(confirmed=True),
+            user_id=ctx.user_id,
         )
         tx = result.transaction
         kind_word = "ingreso" if tx.type.value == "income" else "gasto"
@@ -189,22 +245,24 @@ def apply_pending_action(ctx: ToolContext, pending: dict[str, Any], *, reject: b
 
 def _confirm_commitment(ctx: ToolContext, draft_id: uuid.UUID) -> str:
     tx_store, same_transaction = _bind_store_to_session(ctx.draft_store, ctx.session)
-    draft = tx_store.claim_for_confirmation(draft_id)
+    draft = tx_store.claim_for_confirmation(draft_id, user_id=ctx.user_id)
     try:
         fields = draft.payload["fields"]
         payload = CommitmentCreate.model_validate(fields)
         if same_transaction:
-            commitment = commitment_service.create_commitment_no_commit(ctx.session, payload)
-            tx_store.mark_confirmed(draft_id)
+            commitment = commitment_service.create_commitment_no_commit(
+                ctx.session, ctx.user_id, payload
+            )
+            tx_store.mark_confirmed(draft_id, user_id=ctx.user_id)
             ctx.session.commit()
             ctx.session.refresh(commitment)
         else:
-            commitment = commitment_service.create_commitment(ctx.session, payload)
-            tx_store.mark_confirmed(draft_id)
+            commitment = commitment_service.create_commitment(ctx.session, ctx.user_id, payload)
+            tx_store.mark_confirmed(draft_id, user_id=ctx.user_id)
     except Exception:
         ctx.session.rollback()
         if not same_transaction:
-            tx_store.release_to_pending(draft_id)
+            tx_store.release_to_pending(draft_id, user_id=ctx.user_id)
         raise
     return f"Agendé el compromiso {commitment.name} de {_fmt_money(commitment.amount)}."
 
@@ -260,10 +318,14 @@ def _response(conversation_id: uuid.UUID, trace_id: str, state: dict[str, Any]) 
         if pending_raw
         else None
     )
+    structured_raw = state.get("structured_answer")
     return ChatResponse(
         conversation_id=conversation_id,
         message_id=uuid.uuid4(),
         answer=state.get("final_answer", ""),
+        structured_answer=(
+            StructuredAnswer.model_validate(structured_raw) if structured_raw else None
+        ),
         intent=intent,
         tools_used=tools,
         evidence=evidence,

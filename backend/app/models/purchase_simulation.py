@@ -51,7 +51,7 @@ class PurchaseSimulation(Base):
     installment_amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     first_installment_date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    # Resultado estructurado del cálculo. El cálculo todavía no existe.
+    # Resultado estructurado que devuelve el motor financiero, serializado a JSON.
     result: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(

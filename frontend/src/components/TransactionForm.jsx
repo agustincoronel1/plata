@@ -14,7 +14,9 @@ function todayIso() {
 
 function initialValues(transaction, prefill) {
   return {
-    type: transaction?.type ?? 'expense',
+    // `prefill.type` viene de las acciones rápidas ("Registrar gasto" / "Registrar
+    // ingreso"): solo preselecciona el desplegable, que se puede cambiar igual.
+    type: transaction?.type ?? prefill?.type ?? 'expense',
     amount: transaction?.amount ?? '',
     category: transaction?.category ?? '',
     // `prefill.description` conserva el texto que el usuario escribió para la IA cuando

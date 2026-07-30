@@ -2,20 +2,28 @@ import { useCallback, useEffect, useState } from 'react'
 
 import AITransactionDialog from '../components/AITransactionDialog'
 import ApiStatus from '../components/ApiStatus'
+import AppShell from '../components/AppShell'
+import BalanceHero from '../components/BalanceHero'
+import BrandMark from '../components/BrandMark'
 import CommitmentForm from '../components/CommitmentForm'
+import CopilotDock from '../components/CopilotDock'
 import CopilotPanel from '../components/CopilotPanel'
 import CommitmentList from '../components/CommitmentList'
 import ConfirmDialog from '../components/ConfirmDialog'
 import FeedbackMessage from '../components/FeedbackMessage'
 import FinancialBreakdown from '../components/FinancialBreakdown'
+import Icon from '../components/Icon'
+import LoadingSkeleton from '../components/LoadingSkeleton'
 import MetricCard from '../components/MetricCard'
 import ProfileForm from '../components/ProfileForm'
+import QuickActions from '../components/QuickActions'
+import SectionCard from '../components/SectionCard'
 import SimulationForm from '../components/SimulationForm'
 import SimulationHistory from '../components/SimulationHistory'
 import SimulationResult from '../components/SimulationResult'
-import SpendableHeadline from '../components/SpendableHeadline'
 import TransactionForm from '../components/TransactionForm'
 import TransactionList from '../components/TransactionList'
+import WelcomeScreen from '../components/WelcomeScreen'
 import {
   ApiError,
   createCommitment,
@@ -40,7 +48,24 @@ function errorFeedback(error, fallback) {
   return { type: 'error', text }
 }
 
-export default function DashboardPage() {
+const FOOTER = (
+  <>
+    <p className="app-footer__claim">
+      No te dice solamente cuánto dinero tenés. <em>Te dice cuánto podés usar.</em>
+    </p>
+    <p className="app-footer__disclaimer">
+      Plata es una herramienta de organización y simulación. No constituye asesoramiento
+      financiero.
+    </p>
+  </>
+)
+
+/**
+ * `onSignOut` es lo único que esta pantalla sabe de la autenticación: llega desde arriba
+ * y solo sirve para dibujar el control de cierre de sesión. Si no se pasa (por ejemplo, al
+ * montar el dashboard aislado en un test), no se dibuja y el resto funciona igual.
+ */
+export default function DashboardPage({ onSignOut }) {
   const [status, setStatus] = useState('loading')
   const [profile, setProfile] = useState(null)
   const [transactions, setTransactions] = useState([])
@@ -60,6 +85,10 @@ export default function DashboardPage() {
   const [confirmBusy, setConfirmBusy] = useState(false)
   const [confirmError, setConfirmError] = useState(null)
   const [commitmentBusyId, setCommitmentBusyId] = useState(null)
+
+  // Navegación: una sola pantalla con secciones, sin router.
+  const [activeSection, setActiveSection] = useState('inicio')
+  const [copilotOpen, setCopilotOpen] = useState(false)
 
   const load = useCallback(async () => {
     setStatus('loading')
@@ -102,6 +131,36 @@ export default function DashboardPage() {
     setEditingCommitment(null)
     setManualPrefill(null)
   }, [])
+
+  // La navegación no cambia de ruta: marca la sección activa y la trae a la vista.
+  function goToSection(id) {
+    setActiveSection(id)
+    if (id === 'copiloto') setCopilotOpen(true)
+    const target = document.getElementById(id)
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  // Aperturas de formularios. Las acciones rápidas y los estados vacíos de cada sección
+  // llaman exactamente a estas funciones: mismos formularios, mismo flujo de confirmación.
+  function openNewTransaction(type = null) {
+    setEditingTransaction(null)
+    // Solo preselecciona el tipo cuando se pide explícitamente (no cuando llega un evento).
+    setManualPrefill(type === 'income' || type === 'expense' ? { type } : null)
+    setModal('transaction')
+  }
+
+  function openAITransaction() {
+    setEditingTransaction(null)
+    setManualPrefill(null)
+    setModal('ai-transaction')
+  }
+
+  function openNewCommitment() {
+    setEditingCommitment(null)
+    setModal('commitment')
+  }
 
   // El resumen (motor financiero) depende del saldo y de los compromisos: se refresca
   // después de cualquier cambio que los afecte. Es best-effort: si falla, no rompe la UI.
@@ -234,213 +293,9 @@ export default function DashboardPage() {
     }
   }
 
-  return (
-    <div className="page">
-      <header className="header">
-        <div>
-          <h1 className="header__brand">Plata</h1>
-          <p className="header__tagline">Tu margen real para llegar tranquilo a fin de mes</p>
-        </div>
-        <ApiStatus />
-      </header>
-
-      <main>
-        {status === 'loading' && (
-          <p className="state" role="status" aria-live="polite">
-            Cargando tu situación…
-          </p>
-        )}
-
-        {status === 'offline' && (
-          <section className="state state--warning">
-            <h2>No pudimos conectar con el servidor</h2>
-            <p>Revisá que el backend esté activo y volvé a intentar.</p>
-            <button type="button" className="btn btn--primary" onClick={load}>
-              Reintentar
-            </button>
-          </section>
-        )}
-
-        {status === 'error' && (
-          <section className="state state--warning">
-            <h2>Algo salió mal</h2>
-            <p>No pudimos cargar tus datos. Intentá de nuevo en un momento.</p>
-            <button type="button" className="btn btn--primary" onClick={load}>
-              Reintentar
-            </button>
-          </section>
-        )}
-
-        {status === 'setup' && (
-          <section className="state">
-            <h2>Configurá Plata para empezar</h2>
-            <p>
-              Todavía no cargaste tu situación financiera. Ingresá tu saldo y tus datos para
-              ver tu dashboard.
-            </p>
-            <button type="button" className="btn btn--primary" onClick={() => setModal('profile')}>
-              Configurar situación
-            </button>
-          </section>
-        )}
-
-        {status === 'ready' && profile && (
-          <>
-            <FeedbackMessage feedback={feedback} />
-
-            <SpendableHeadline summary={summary} />
-
-            <section aria-labelledby="tu-situacion">
-              <div className="section-head">
-                <h2 className="section-head__title" id="tu-situacion">
-                  Tu situación
-                </h2>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={() => setModal('profile')}
-                >
-                  Editar situación
-                </button>
-              </div>
-              <ul className="metrics">
-                <MetricCard
-                  label="Saldo actual"
-                  value={formatMoney(profile.current_balance)}
-                  hint="El dinero que tenés hoy."
-                />
-                <MetricCard
-                  label="Días hasta cobrar"
-                  value={daysUntilLabel(profile.next_income_date)}
-                  hint="Tiempo hasta tu próximo ingreso."
-                />
-                <MetricCard
-                  label="Dinero protegido"
-                  value={formatMoney(profile.protected_amount)}
-                  hint="Reserva que Plata no considera disponible."
-                />
-              </ul>
-              <FinancialBreakdown summary={summary} />
-            </section>
-
-            <h2 className="visually-hidden">Acciones</h2>
-            <div className="actions">
-              <button
-                type="button"
-                className="action action--primary action--enabled"
-                onClick={() => {
-                  setEditingTransaction(null)
-                  setModal('transaction')
-                }}
-              >
-                Registrar movimiento
-              </button>
-              <button
-                type="button"
-                className="action action--secondary action--enabled"
-                onClick={() => {
-                  setEditingTransaction(null)
-                  setManualPrefill(null)
-                  setModal('ai-transaction')
-                }}
-              >
-                Escribilo con IA
-              </button>
-              <button
-                type="button"
-                className="action action--secondary action--enabled"
-                onClick={() => setModal('simulation')}
-              >
-                Simular compra
-              </button>
-            </div>
-
-            <CopilotPanel onActionApplied={refreshTransactionsAndBalance} />
-
-            {simulationResult && (
-              <section aria-labelledby="sim-result">
-                <div className="section-head">
-                  <h2 className="section-head__title" id="sim-result">
-                    Resultado de la simulación
-                  </h2>
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--small"
-                    onClick={() => setSimulationResult(null)}
-                  >
-                    Ocultar
-                  </button>
-                </div>
-                <SimulationResult simulation={simulationResult} />
-              </section>
-            )}
-
-            <section aria-labelledby="movimientos">
-              <div className="section-head">
-                <h2 className="section-head__title" id="movimientos">
-                  Movimientos recientes
-                </h2>
-              </div>
-              <TransactionList
-                transactions={transactions}
-                onEdit={(tx) => {
-                  setEditingTransaction(tx)
-                  setModal('transaction')
-                }}
-                onDelete={askDeleteTransaction}
-              />
-            </section>
-
-            <section aria-labelledby="compromisos">
-              <div className="section-head">
-                <h2 className="section-head__title" id="compromisos">
-                  Próximos compromisos
-                </h2>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={() => {
-                    setEditingCommitment(null)
-                    setModal('commitment')
-                  }}
-                >
-                  Agregar compromiso
-                </button>
-              </div>
-              <CommitmentList
-                commitments={commitments}
-                onEdit={(cm) => {
-                  setEditingCommitment(cm)
-                  setModal('commitment')
-                }}
-                onDelete={askDeleteCommitment}
-                onChangeStatus={handleChangeStatus}
-                busyId={commitmentBusyId}
-              />
-            </section>
-
-            <section aria-labelledby="simulaciones">
-              <div className="section-head">
-                <h2 className="section-head__title" id="simulaciones">
-                  Simulaciones recientes
-                </h2>
-              </div>
-              <SimulationHistory simulations={simulations} />
-            </section>
-          </>
-        )}
-      </main>
-
-      <footer className="footer">
-        <p className="footer__claim">
-          No te dice solamente cuánto dinero tenés. <em>Te dice cuánto podés usar.</em>
-        </p>
-        <p className="footer__disclaimer">
-          Plata es una herramienta de organización y simulación. No constituye asesoramiento
-          financiero.
-        </p>
-      </footer>
-
+  // Los diálogos son los mismos en cualquier estado de la pantalla: se arman una sola vez.
+  const overlays = (
+    <>
       {modal === 'profile' && (
         <ProfileForm
           profile={profile}
@@ -500,6 +355,244 @@ export default function DashboardPage() {
           onCancel={() => setConfirm(null)}
         />
       )}
-    </div>
+    </>
+  )
+
+  // Carga, error de conexión y onboarding: pantalla propia, sin dashboard vacío detrás.
+  if (status !== 'ready' || !profile) {
+    return (
+      <div className="boot">
+        <header className="boot__top">
+          <BrandMark />
+          <div className="boot__actions">
+            <ApiStatus />
+            {/* También hay que poder salir antes de terminar el onboarding. */}
+            {onSignOut && (
+              <button
+                type="button"
+                className="topbar__signout"
+                onClick={onSignOut}
+                aria-label="Cerrar sesión"
+                title="Cerrar sesión"
+              >
+                <Icon name="logout" />
+              </button>
+            )}
+          </div>
+        </header>
+
+        <main className="boot__main">
+          {status === 'loading' && (
+            <>
+              <LoadingSkeleton />
+              <p className="loading-status" role="status" aria-live="polite">
+                Cargando tu situación…
+              </p>
+            </>
+          )}
+
+          {status === 'offline' && (
+            <section className="state state--warning">
+              <span className="state__icon">
+                <Icon name="alert" />
+              </span>
+              <h2>No pudimos conectar con el servidor</h2>
+              <p>Revisá que el backend esté activo y volvé a intentar.</p>
+              <button type="button" className="btn btn--primary" onClick={load}>
+                Reintentar
+              </button>
+            </section>
+          )}
+
+          {status === 'error' && (
+            <section className="state state--warning">
+              <span className="state__icon">
+                <Icon name="alert" />
+              </span>
+              <h2>Algo salió mal</h2>
+              <p>No pudimos cargar tus datos. Intentá de nuevo en un momento.</p>
+              <button type="button" className="btn btn--primary" onClick={load}>
+                Reintentar
+              </button>
+            </section>
+          )}
+
+          {status === 'setup' && <WelcomeScreen onStart={() => setModal('profile')} />}
+        </main>
+
+        <footer className="app-footer">{FOOTER}</footer>
+
+        {overlays}
+      </div>
+    )
+  }
+
+  return (
+    <AppShell
+      userName={profile.name}
+      active={activeSection}
+      onNavigate={goToSection}
+      onOpenProfile={() => setModal('profile')}
+      onOpenCopilot={() => goToSection('copiloto')}
+      onSignOut={onSignOut}
+      copilotOpen={copilotOpen}
+      footer={FOOTER}
+    >
+      <FeedbackMessage feedback={feedback} />
+
+      <div className="dashboard">
+        <div className="dashboard__main">
+          <BalanceHero summary={summary} onOpenDetail={() => goToSection('situacion')} />
+
+          <QuickActions
+            onExpense={() => openNewTransaction('expense')}
+            onIncome={() => openNewTransaction('income')}
+            onAI={openAITransaction}
+            onSimulate={() => setModal('simulation')}
+          />
+
+          <SectionCard
+            id="situacion"
+            title="Tu situación"
+            titleId="tu-situacion"
+            subtitle="Los datos con los que Plata calcula tu disponible."
+            action={
+              <button
+                type="button"
+                className="btn btn--ghost btn--small"
+                onClick={() => setModal('profile')}
+              >
+                Editar situación
+              </button>
+            }
+          >
+            <ul className="metrics">
+              <MetricCard label="Saldo actual" value={formatMoney(profile.current_balance)} />
+              <MetricCard
+                label="Compromisos"
+                value={formatMoney(summary?.pending_commitments_amount)}
+              />
+              <MetricCard
+                label="Dinero protegido"
+                value={formatMoney(profile.protected_amount)}
+              />
+              <MetricCard
+                label="Días hasta cobrar"
+                value={daysUntilLabel(profile.next_income_date)}
+              />
+            </ul>
+            <FinancialBreakdown summary={summary} />
+          </SectionCard>
+
+          <SectionCard
+            id="movimientos"
+            title="Movimientos recientes"
+            titleId="movimientos-title"
+            action={
+              <button
+                type="button"
+                className="btn btn--secondary btn--small"
+                onClick={() => openNewTransaction()}
+              >
+                <Icon name="plus" />
+                Registrar movimiento
+              </button>
+            }
+          >
+            <TransactionList
+              transactions={transactions}
+              onEdit={(tx) => {
+                setEditingTransaction(tx)
+                setModal('transaction')
+              }}
+              onDelete={askDeleteTransaction}
+              onCreateManual={() => openNewTransaction()}
+              onCreateWithAI={openAITransaction}
+            />
+          </SectionCard>
+
+          <SectionCard
+            id="compromisos"
+            title="Próximos compromisos"
+            titleId="compromisos-title"
+            subtitle="Se descuentan de tu dinero disponible."
+            action={
+              <button
+                type="button"
+                className="btn btn--secondary btn--small"
+                onClick={openNewCommitment}
+              >
+                <Icon name="plus" />
+                Agregar compromiso
+              </button>
+            }
+          >
+            <CommitmentList
+              commitments={commitments}
+              onEdit={(cm) => {
+                setEditingCommitment(cm)
+                setModal('commitment')
+              }}
+              onDelete={askDeleteCommitment}
+              onChangeStatus={handleChangeStatus}
+              busyId={commitmentBusyId}
+              onCreate={openNewCommitment}
+            />
+          </SectionCard>
+
+          <SectionCard
+            id="simulaciones"
+            title="Simulador de compras"
+            titleId="simulador"
+            subtitle="Simular no registra un gasto ni modifica tu saldo."
+            action={
+              <button
+                type="button"
+                className="btn btn--primary btn--small"
+                onClick={() => setModal('simulation')}
+              >
+                Nueva simulación
+              </button>
+            }
+          >
+            {simulationResult && (
+              <section className="sim-block" aria-labelledby="sim-result">
+                <div className="card__head">
+                  <h3 className="card__title" id="sim-result">
+                    Resultado de la simulación
+                  </h3>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--small"
+                    onClick={() => setSimulationResult(null)}
+                  >
+                    Ocultar
+                  </button>
+                </div>
+                <SimulationResult simulation={simulationResult} />
+              </section>
+            )}
+
+            <div className="sim-block">
+              <h3 className="sim-block__title" id="simulaciones-recientes">
+                Simulaciones recientes
+              </h3>
+              <SimulationHistory
+                simulations={simulations}
+                onSimulate={() => setModal('simulation')}
+              />
+            </div>
+          </SectionCard>
+        </div>
+
+        <div className="dashboard__aside">
+          <CopilotDock open={copilotOpen} onClose={() => setCopilotOpen(false)}>
+            <CopilotPanel onActionApplied={refreshTransactionsAndBalance} />
+          </CopilotDock>
+        </div>
+      </div>
+
+      {overlays}
+    </AppShell>
   )
 }

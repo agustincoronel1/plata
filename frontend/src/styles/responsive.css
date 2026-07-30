@@ -1,0 +1,220 @@
+/**
+ * Ajustes por viewport. Regla base del sistema: mobile primero, una sola columna,
+ * sin scroll horizontal y con la navegación inferior sin tapar contenido.
+ */
+
+/* ---------- Pantallas muy angostas (320px) ---------- */
+
+@media (width < 22.5rem) {
+  .quick {
+    grid-template-columns: 1fr;
+  }
+
+  .bottom-nav__link {
+    font-size: 0.625rem;
+  }
+
+  .hero {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  /* En 320px el saldo sigue siendo lo más grande de la pantalla, pero entra entero
+     aunque sean ocho cifras. */
+  .hero__value {
+    font-size: clamp(2rem, 9vw, 2.75rem);
+  }
+}
+
+/* ---------- Mobile: modales como hoja inferior ---------- */
+
+@media (width < 30rem) {
+  /* En teléfono, dos columnas dejan menos de 130px por importe: una sola columna es lo
+     que garantiza que el monto se lea entero y con jerarquía. */
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .modal {
+    max-width: 100%;
+    margin: auto 0 0;
+  }
+
+  .modal__panel {
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    max-height: 92dvh;
+    padding-bottom: calc(var(--space-5) + var(--safe-bottom));
+    animation: sheet-in var(--t-slow) var(--ease);
+  }
+
+  @keyframes sheet-in {
+    from {
+      transform: translateY(12px);
+      opacity: 0.6;
+    }
+
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+
+  .form__actions {
+    flex-direction: column-reverse;
+  }
+
+  .form__actions .btn {
+    width: 100%;
+  }
+
+  /* Las acciones de un compromiso se apilan antes de achicarse. */
+  .cm-actions .btn {
+    flex: 1 1 8rem;
+  }
+
+  /* En pantallas angostas la descripción y el importe mandan: las acciones bajan a su
+     propia línea antes de comprimir el contenido o generar scroll horizontal. */
+  .row {
+    flex-wrap: wrap;
+  }
+
+  .row__body {
+    flex: 1 1 6rem;
+  }
+
+  .row__amount {
+    margin-left: auto;
+  }
+
+  .row__actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* ---------- A partir de 480px ---------- */
+
+@media (width >= 30rem) {
+  .empty__actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-self: flex-start;
+  }
+
+  .quick {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .quick-action {
+    min-height: 6.5rem;
+  }
+
+  .sim-months {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ---------- Tablet ---------- */
+
+@media (width >= 48rem) {
+  .card {
+    padding: var(--space-5);
+  }
+
+  /* Se mantienen dos columnas: más aire por tarjeta y el importe siempre entero. */
+  .metrics {
+    gap: var(--space-4);
+  }
+
+  .metric {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .sim-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero {
+    padding: var(--space-7) var(--space-6);
+  }
+}
+
+/* ---------- Copiloto: hoja inferior mientras haya navegación mobile ---------- */
+
+@media (width < 64rem) {
+  .copilot-dock {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-dock);
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity var(--t-base) var(--ease), visibility var(--t-base) var(--ease);
+  }
+
+  .copilot-dock[data-open="true"] {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  .copilot-dock__scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background-color: rgb(4 6 4 / 70%);
+  }
+
+  .copilot-dock__panel {
+    position: absolute;
+    inset: auto 0 0 0;
+    max-height: 92dvh;
+    overflow-y: auto;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    box-shadow: var(--shadow-lg);
+    padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+    transform: translateY(100%);
+    transition: transform var(--t-slow) var(--ease);
+  }
+
+  .copilot-dock[data-open="true"] .copilot-dock__panel {
+    transform: none;
+  }
+
+  .copilot-dock__close {
+    display: inline-grid;
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    z-index: 1;
+  }
+
+  .copilot-dock .copilot {
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    padding-top: var(--space-5);
+  }
+
+  .copilot__messages {
+    max-height: 52dvh;
+  }
+}
+
+/* ---------- Desktop ---------- */
+
+@media (width >= 64rem) {
+  .quick-action {
+    min-height: 7rem;
+  }
+}
+
+/**
+ * A partir de 1280px el copiloto ocupa su propia columna, así que la columna central es
+ * más angosta que en tablet: el saldo se topea un poco antes para que un importe de ocho
+ * cifras siga entrando en una sola línea.
+ */
+@media (width >= 80rem) {
+  .hero__value {
+    font-size: clamp(2.5rem, 5vw, 4.5rem);
+  }
+}

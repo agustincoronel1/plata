@@ -11,7 +11,7 @@ from app.ai.gateway import AIGateway
 from app.ai.providers.mock import MockAIProvider
 from app.models import PurchaseSimulation
 from app.services.draft_store import InMemoryDraftStore
-from tests.conftest import requires_postgres
+from tests.conftest import TEST_USER_ID, requires_postgres
 
 pytestmark = requires_postgres
 
@@ -24,6 +24,7 @@ def _ctx(session: Session) -> ToolContext:
         draft_store=InMemoryDraftStore(),
         gateway=AIGateway(MockAIProvider()),
         as_of=AS_OF,
+        user_id=TEST_USER_ID,
     )
 
 
@@ -56,6 +57,37 @@ def test_simulate_preview_no_persiste(
     after = db_session.execute(select(func.count(PurchaseSimulation.id))).scalar_one()
     assert rec["ok"] is True
     assert before == after  # una vista previa no guarda nada
+
+
+def test_check_one_time_purchase_no_simula_cuotas(
+    db_session: Session, make_profile: Callable[..., dict]
+) -> None:
+    """Compra al contado: solo compara contra el disponible. Sin calendario de cuotas."""
+    # 620000 - 120000 protegido - 40000 colchón = 460000 disponible (sin compromisos).
+    make_profile()
+    rec = run_tool(_ctx(db_session), "check_one_time_purchase", {"amount": "18000"})
+
+    assert rec["ok"] is True
+    assert rec["writes"] is False
+    assert rec["data"]["fits"] is True
+    assert rec["data"]["spendable_total"] == "460000.00"
+    assert rec["data"]["remaining_after_purchase"] == "442000.00"
+    assert rec["data"]["over_budget_amount"] == "0.00"
+    for internal in ("installments", "first_installment_date", "risk_months_count", "conclusion"):
+        assert internal not in rec["data"]
+
+
+def test_check_one_time_purchase_marca_cuanto_te_pasas(
+    db_session: Session, make_profile: Callable[..., dict]
+) -> None:
+    make_profile(current_balance="175000.00")  # disponible seguro: 15000
+
+    rec = run_tool(_ctx(db_session), "check_one_time_purchase", {"amount": "18000"})
+
+    assert rec["data"]["fits"] is False
+    assert rec["data"]["spendable_total"] == "15000.00"
+    assert rec["data"]["over_budget_amount"] == "3000.00"
+    assert rec["data"]["remaining_after_purchase"] == "0.00"
 
 
 def test_create_transaction_draft_prepara_borrador(

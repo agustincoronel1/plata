@@ -7,12 +7,18 @@ from fastapi.testclient import TestClient
 
 from app.ai.agent.answers import render_answer
 from app.ai.agent.schemas import AgentIntent
+from app.ai.exceptions import (
+    AIProviderTimeoutError,
+    AIProviderUnavailableError,
+    AIStructuredOutputError,
+)
 from app.ai.gateway import AIGateway, get_ai_gateway
 from app.ai.providers.mock import MockAIProvider
 from app.main import app
 from app.services import ai_chat_service
+from app.services.ai_chat_service import _thread_id
 from app.services.draft_store import DraftStatus, InMemoryDraftStore, get_draft_store
-from tests.conftest import API, requires_postgres
+from tests.conftest import API, TEST_USER_ID, requires_postgres
 
 pytestmark = requires_postgres
 
@@ -159,7 +165,9 @@ def test_chat_mensaje_mientras_hay_pending_devuelve_409_y_no_crea_otro_draft(
     draft = next(iter(store._drafts.values()))
     assert draft.status is DraftStatus.PENDING
     state = (
-        ai_chat_service.get_compiled_graph().get_state({"configurable": {"thread_id": conv}}).values
+        ai_chat_service.get_compiled_graph()
+        .get_state({"configurable": {"thread_id": _thread_id(TEST_USER_ID, conv)}})
+        .values
     )
     assert state["pending_action"]["action_id"] == action_id
 
@@ -175,6 +183,7 @@ def test_chat_bloquea_segunda_escritura_misma_ronda(
         draft_store=store,
         gateway=AIGateway(MockAIProvider()),
         brain=PlannedBrain(AgentIntent.CREATE_TRANSACTION, [_tx_call(), _cm_call()]),
+        user_id=TEST_USER_ID,
     )
 
     assert response.requires_approval is True
@@ -182,7 +191,9 @@ def test_chat_bloquea_segunda_escritura_misma_ronda(
     assert len(store._drafts) == 1
     state = (
         ai_chat_service.get_compiled_graph()
-        .get_state({"configurable": {"thread_id": str(response.conversation_id)}})
+        .get_state(
+            {"configurable": {"thread_id": _thread_id(TEST_USER_ID, response.conversation_id)}}
+        )
         .values
     )
     assert state["tool_results"][1]["ok"] is False
@@ -203,6 +214,7 @@ def test_chat_escritura_incompleta_bloquea_segunda_escritura_misma_ronda(
             AgentIntent.CREATE_TRANSACTION,
             [_tx_call("Gaste algo en el super"), _cm_call()],
         ),
+        user_id=TEST_USER_ID,
     )
 
     assert response.requires_approval is False
@@ -212,7 +224,9 @@ def test_chat_escritura_incompleta_bloquea_segunda_escritura_misma_ronda(
     assert draft.status is DraftStatus.PENDING
     state = (
         ai_chat_service.get_compiled_graph()
-        .get_state({"configurable": {"thread_id": str(response.conversation_id)}})
+        .get_state(
+            {"configurable": {"thread_id": _thread_id(TEST_USER_ID, response.conversation_id)}}
+        )
         .values
     )
     assert state["tool_results"][0]["ok"] is True
@@ -235,6 +249,7 @@ def test_chat_lectura_y_escritura_misma_ronda_funcionan(
             AgentIntent.CREATE_TRANSACTION,
             [{"name": "get_financial_summary", "arguments": {}}, _tx_call()],
         ),
+        user_id=TEST_USER_ID,
     )
 
     assert [tool.name for tool in response.tools_used] == [
@@ -259,6 +274,7 @@ def test_chat_escritura_y_luego_lectura_misma_ronda_funcionan(
             AgentIntent.CREATE_TRANSACTION,
             [_tx_call(), {"name": "get_financial_summary", "arguments": {}}],
         ),
+        user_id=TEST_USER_ID,
     )
 
     assert [tool.name for tool in response.tools_used] == [
@@ -285,6 +301,7 @@ def test_chat_dos_lecturas_siguen_ejecutandose(
                 {"name": "list_pending_commitments", "arguments": {}},
             ],
         ),
+        user_id=TEST_USER_ID,
     )
 
     assert [tool.name for tool in response.tools_used] == [
@@ -306,6 +323,7 @@ def test_chat_nueva_escritura_despues_de_reject(
         draft_store=store,
         gateway=AIGateway(MockAIProvider()),
         brain=PlannedBrain(AgentIntent.CREATE_TRANSACTION, [_tx_call()]),
+        user_id=TEST_USER_ID,
     )
     rejected = ai_chat_service.resume(
         db_session,
@@ -315,6 +333,7 @@ def test_chat_nueva_escritura_despues_de_reject(
         draft_store=store,
         gateway=AIGateway(MockAIProvider()),
         brain=PlannedBrain(AgentIntent.CREATE_TRANSACTION, [_tx_call()]),
+        user_id=TEST_USER_ID,
     )
     assert rejected.requires_approval is False
 
@@ -325,6 +344,7 @@ def test_chat_nueva_escritura_despues_de_reject(
         draft_store=store,
         gateway=AIGateway(MockAIProvider()),
         brain=PlannedBrain(AgentIntent.CREATE_TRANSACTION, [_tx_call()]),
+        user_id=TEST_USER_ID,
     )
 
     assert second.requires_approval is True
@@ -343,6 +363,7 @@ def test_chat_nueva_escritura_despues_de_approve(
         draft_store=store,
         gateway=AIGateway(MockAIProvider()),
         brain=PlannedBrain(AgentIntent.CREATE_TRANSACTION, [_tx_call()]),
+        user_id=TEST_USER_ID,
     )
     approved = ai_chat_service.resume(
         db_session,
@@ -352,6 +373,7 @@ def test_chat_nueva_escritura_despues_de_approve(
         draft_store=store,
         gateway=AIGateway(MockAIProvider()),
         brain=PlannedBrain(AgentIntent.CREATE_TRANSACTION, [_tx_call()]),
+        user_id=TEST_USER_ID,
     )
     assert approved.requires_approval is False
 
@@ -362,6 +384,7 @@ def test_chat_nueva_escritura_despues_de_approve(
         draft_store=store,
         gateway=AIGateway(MockAIProvider()),
         brain=PlannedBrain(AgentIntent.CREATE_TRANSACTION, [_tx_call()]),
+        user_id=TEST_USER_ID,
     )
 
     assert second.requires_approval is True
@@ -396,7 +419,11 @@ def test_chat_commitment_incompleto_pregunta_sin_draft(
     assert body["intent"] == "create_commitment"
     assert body["requires_approval"] is False
     assert body["pending_action"] is None
-    assert "Me faltan" in body["answer"]
+    # Pide los datos en castellano: nunca los nombres internos de los campos.
+    assert "Me falta" in body["answer"]
+    assert "el monto" in body["answer"]
+    assert "amount" not in body["answer"]
+    assert "due_date" not in body["answer"]
 
 
 def test_chat_commitment_multiturn_completa_monto(
@@ -406,7 +433,8 @@ def test_chat_commitment_multiturn_completa_monto(
     first = _chat(chat_client, "Necesito pagar el alquiler el 5 de agosto")
     assert first["requires_approval"] is False
     assert first["pending_action"] is None
-    assert "amount" in first["answer"]
+    assert "el monto" in first["answer"]
+    assert "amount" not in first["answer"]
 
     second = _chat(chat_client, "Son 350 mil", first["conversation_id"])
     assert second["requires_approval"] is True
@@ -422,7 +450,8 @@ def test_chat_commitment_pronto_no_inventa_fecha(
     body = _chat(chat_client, "Necesito pagar el alquiler pronto")
     assert body["requires_approval"] is False
     assert body["pending_action"] is None
-    assert "due_date" in body["answer"]
+    assert "la fecha de vencimiento" in body["answer"]
+    assert "due_date" not in body["answer"]
 
 
 def test_chat_commitment_contexto_no_cruza_conversaciones(
@@ -497,3 +526,71 @@ def test_approve_sin_pendiente_es_404(
         json={"action_id": str(uuid.uuid4())},
     )
     assert resp.status_code == 404
+
+
+def test_segundo_approve_es_rechazado_y_no_duplica_el_movimiento(
+    chat_client: TestClient, make_profile: Callable[..., dict]
+) -> None:
+    make_profile()
+    before = chat_client.get(f"{API}/dashboard/summary").json()["current_balance"]
+    body = _chat(chat_client, "Gasté 25 lucas ayer en nafta con débito")
+    conv = body["conversation_id"]
+    action_id = body["pending_action"]["action_id"]
+    url = f"{API}/ai/conversations/{conv}/approve"
+
+    first = chat_client.post(url, json={"action_id": action_id})
+    assert first.status_code == 200, first.text
+    second = chat_client.post(url, json={"action_id": action_id})
+
+    assert second.status_code == 404
+    assert "traceback" not in second.text.lower()
+    after = chat_client.get(f"{API}/dashboard/summary").json()["current_balance"]
+    assert float(after) == float(before) - 25000  # el saldo se movió una sola vez
+    matching = [
+        tx
+        for tx in chat_client.get(f"{API}/transactions").json()
+        if tx["amount"] == "25000.00" and tx["category"] == "transporte"
+    ]
+    assert len(matching) == 1
+
+
+class _FailingBrain:
+    """Cerebro que falla siempre: sirve para inyectar fallos del proveedor sin red."""
+
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    def classify(self, message: str, history: list[dict]) -> dict:
+        raise self._error
+
+    def answer(self, intent: AgentIntent, context: dict) -> str:
+        raise self._error
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status"),
+    [
+        (AIProviderTimeoutError(), 504),
+        (AIProviderUnavailableError(), 503),
+        (AIStructuredOutputError(), 502),
+    ],
+)
+def test_chat_traduce_fallos_del_proveedor_a_http_seguro(
+    chat_client: TestClient,
+    make_profile: Callable[..., dict],
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected_status: int,
+) -> None:
+    make_profile()
+    monkeypatch.setattr(
+        ai_chat_service, "build_brain", lambda settings: _FailingBrain(error), raising=True
+    )
+
+    resp = chat_client.post(f"{API}/ai/chat", json={"message": "¿Cuánto puedo gastar hoy?"})
+
+    assert resp.status_code == expected_status
+    body = resp.text.lower()
+    assert "traceback" not in body
+    assert "sk-" not in body
+    assert "openai" not in body

@@ -11,6 +11,11 @@ Cada operación es atómica: el cambio del movimiento y el del saldo viajan en u
 commit. Ante cualquier error se hace rollback completo y ninguno de los dos queda a
 medias. Para evitar carreras entre operaciones concurrentes, el UserProfile se bloquea
 con SELECT ... FOR UPDATE antes de tocar el saldo.
+
+`user_id` es obligatorio y sin valor por defecto: cada consulta y cada escritura quedan
+acotadas al usuario dueño de los datos. En la API sale siempre de `current_user.id`, es
+decir del JWT ya verificado. El bloqueo del perfil también es por usuario, así que dos
+personas operando a la vez no se esperan entre sí.
 """
 
 from __future__ import annotations
@@ -21,7 +26,6 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.constants import DEMO_USER_ID
 from app.models import Transaction, TransactionType, UserProfile
 from app.schemas.transaction import TransactionCreate, TransactionUpdate
 from app.services.exceptions import NotFoundError
@@ -42,22 +46,28 @@ def _signed_effect(tx_type: TransactionType, amount: Decimal) -> Decimal:
     return amount if tx_type is TransactionType.INCOME else -amount
 
 
-def _lock_profile(session: Session) -> UserProfile:
-    """Bloquea el perfil demo para modificarlo. Lanza NotFoundError si no existe."""
+def _lock_profile(session: Session, user_id: UUID) -> UserProfile:
+    """Bloquea el perfil del usuario para modificarlo. NotFoundError si no existe."""
     profile = session.execute(
-        select(UserProfile).where(UserProfile.id == DEMO_USER_ID).with_for_update()
+        select(UserProfile).where(UserProfile.id == user_id).with_for_update()
     ).scalar_one_or_none()
     if profile is None:
         raise NotFoundError(PROFILE_NOT_FOUND)
     return profile
 
 
-def _get_owned(session: Session, transaction_id: UUID) -> Transaction:
-    """Movimiento del perfil demo. Lanza NotFoundError si no existe o es de otro perfil."""
+def _get_owned(session: Session, user_id: UUID, transaction_id: UUID) -> Transaction:
+    """Movimiento del usuario. NotFoundError si no existe o es de otra persona.
+
+    El filtro por `user_id` va en la MISMA consulta que busca por id: pedir el movimiento
+    y comparar el dueño después abre una ventana para devolver datos ajenos. Un id que
+    existe pero es de otro usuario responde 404, no 403: quien pregunta no tiene por qué
+    enterarse de que ese movimiento existe.
+    """
     transaction = session.execute(
         select(Transaction).where(
             Transaction.id == transaction_id,
-            Transaction.user_id == DEMO_USER_ID,
+            Transaction.user_id == user_id,
         )
     ).scalar_one_or_none()
     if transaction is None:
@@ -65,8 +75,8 @@ def _get_owned(session: Session, transaction_id: UUID) -> Transaction:
     return transaction
 
 
-def list_transactions(session: Session) -> list[Transaction]:
-    """Movimientos del perfil demo, del más reciente al más antiguo.
+def list_transactions(session: Session, user_id: UUID) -> list[Transaction]:
+    """Movimientos del usuario, del más reciente al más antiguo.
 
     Ordena por fecha del movimiento y, a igualdad de fecha, por fecha de alta: solo
     lectura, nunca toca el saldo.
@@ -74,16 +84,18 @@ def list_transactions(session: Session) -> list[Transaction]:
     return list(
         session.execute(
             select(Transaction)
-            .where(Transaction.user_id == DEMO_USER_ID)
+            .where(Transaction.user_id == user_id)
             .order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
         ).scalars()
     )
 
 
-def create_transaction_no_commit(session: Session, payload: TransactionCreate) -> Transaction:
+def create_transaction_no_commit(
+    session: Session, user_id: UUID, payload: TransactionCreate
+) -> Transaction:
     """Crea el movimiento y aplica su efecto sobre el saldo sin cerrar la transacción."""
-    profile = _lock_profile(session)
-    transaction = Transaction(user_id=DEMO_USER_ID, **payload.model_dump())
+    profile = _lock_profile(session, user_id)
+    transaction = Transaction(user_id=user_id, **payload.model_dump())
 
     profile.current_balance += _signed_effect(transaction.type, transaction.amount)
     session.add(transaction)
@@ -92,10 +104,10 @@ def create_transaction_no_commit(session: Session, payload: TransactionCreate) -
     return transaction
 
 
-def create_transaction(session: Session, payload: TransactionCreate) -> Transaction:
+def create_transaction(session: Session, user_id: UUID, payload: TransactionCreate) -> Transaction:
     """Crea el movimiento y aplica su efecto sobre el saldo, en un único commit."""
     try:
-        transaction = create_transaction_no_commit(session, payload)
+        transaction = create_transaction_no_commit(session, user_id, payload)
         session.commit()
     except Exception:
         session.rollback()
@@ -106,15 +118,15 @@ def create_transaction(session: Session, payload: TransactionCreate) -> Transact
 
 
 def update_transaction(
-    session: Session, transaction_id: UUID, payload: TransactionUpdate
+    session: Session, user_id: UUID, transaction_id: UUID, payload: TransactionUpdate
 ) -> Transaction:
     """Edita un movimiento y ajusta el saldo por la diferencia de efecto.
 
     Se revierte el efecto del movimiento anterior y se aplica el del actualizado. Cambiar
     un gasto por un ingreso, o el monto, recalcula el saldo correctamente.
     """
-    profile = _lock_profile(session)
-    transaction = _get_owned(session, transaction_id)
+    profile = _lock_profile(session, user_id)
+    transaction = _get_owned(session, user_id, transaction_id)
 
     previous_effect = _signed_effect(transaction.type, transaction.amount)
     changes = payload.model_dump(exclude_unset=True)
@@ -135,10 +147,10 @@ def update_transaction(
     return transaction
 
 
-def delete_transaction(session: Session, transaction_id: UUID) -> None:
+def delete_transaction(session: Session, user_id: UUID, transaction_id: UUID) -> None:
     """Elimina un movimiento y revierte su efecto sobre el saldo, en un único commit."""
-    profile = _lock_profile(session)
-    transaction = _get_owned(session, transaction_id)
+    profile = _lock_profile(session, user_id)
+    transaction = _get_owned(session, user_id, transaction_id)
 
     try:
         profile.current_balance -= _signed_effect(transaction.type, transaction.amount)

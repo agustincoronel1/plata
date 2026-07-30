@@ -47,7 +47,7 @@ Tres decisiones de producto se derivan de eso:
 - **Mirar hacia adelante.** El valor está en anticipar el impacto de una compra, no en
   reportar lo que ya pasó.
 
-## Alcance del MVP (una semana)
+## Alcance del MVP
 
 El MVP se sostiene sobre tres funcionalidades:
 
@@ -74,7 +74,6 @@ un frontend que muestre las tres funcionalidades de forma clara.
 
 Excluido de forma deliberada, no por falta de tiempo:
 
-- Autenticación, registro de usuarios y multiusuario real.
 - Integración con bancos, tarjetas o scraping de resúmenes.
 - Presupuestos por categoría y sistema de categorización manual.
 - Reportes históricos, gráficos y analítica.
@@ -138,7 +137,7 @@ inventado. Decisiones de producto que lo guían:
 - Sin Redis, Celery, Kafka ni servicios externos más allá del proveedor de IA.
 - La arquitectura acompaña el alcance: no se agregan abstracciones antes de necesitarlas.
 
-## Decisiones del flujo asistido por IA (Día 4)
+## Decisiones del flujo asistido por IA
 
 - **El modelo propone, la persona dispone.** La IA nunca calcula el saldo, ejecuta SQL, crea
   movimientos ni marca compromisos. Interpreta lenguaje natural y orquesta herramientas
@@ -157,4 +156,20 @@ inventado. Decisiones de producto que lo guían:
 - **Privacidad y trazabilidad.** No se loguean ni devuelven texto del usuario, montos, prompts,
   respuestas crudas ni API keys por defecto. Las trazas registran metadatos (intención, tools,
   duraciones, verificador, aprobación), no contenido.
-- **Alcance acotado.** Solo ARS; sin voz, OCR, PDFs, extractos bancarios ni multiagente (etapa 2).
+- **Alcance acotado.** Solo ARS; sin voz, OCR, PDFs, extractos bancarios ni multiagente.
+
+## Decisiones de la primera experiencia
+
+- **Sin perfil no hay dashboard.** Mientras la API responda `404` en el perfil, se muestra una
+  pantalla de bienvenida que explica para qué sirve Plata y ofrece una única acción, que abre
+  el formulario de perfil existente. No se renderiza el dashboard con ceros ni errores, y no
+  se abre ningún modal automáticamente.
+- **Un estado vacío no es un error.** Cada sección explica qué falta y ofrece la acción que ya
+  existe para resolverlo, en vez de mostrar una lista en blanco o esconderse.
+- **La sección de compromisos no se oculta nunca.** Aunque esté vacía, la persona tiene que
+  entender que los compromisos entran en el cálculo del disponible.
+- **Simular no gasta.** El estado vacío de simulaciones lo dice explícito: una simulación no
+  registra un movimiento ni modifica el saldo.
+- **El copiloto sugiere, no actúa.** Sin conversación muestra ejemplos de lo que el backend ya
+  sabe resolver; ninguno se envía solo, y los que implican una escritura siguen pasando por la
+  aprobación humana.

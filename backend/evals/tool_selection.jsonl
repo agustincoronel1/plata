@@ -5,3 +5,6 @@
 {"intent": "compare_purchase_dates", "args": {}, "last_simulation": {"amount": "900000", "installments": 9}, "expected_tools": ["simulate_purchase_preview", "simulate_purchase_preview"], "expected_approval": false}
 {"intent": "create_transaction", "args": {}, "message": "gasté 25 lucas en nafta", "expected_tools": ["create_transaction_draft"], "expected_approval": true}
 {"intent": "unknown", "args": {}, "expected_tools": [], "expected_approval": false}
+{"intent": "daily_budget", "args": {}, "expected_tools": ["get_financial_summary"], "expected_approval": false}
+{"intent": "one_time_purchase", "args": {"amount": "18000", "category": "ropa"}, "expected_tools": ["check_one_time_purchase"], "expected_approval": false}
+{"intent": "one_time_purchase", "args": {}, "expected_tools": [], "expected_approval": false}

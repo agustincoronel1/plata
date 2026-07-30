@@ -63,6 +63,7 @@ def seeded_session():
     for category, amount, desc in SEED_TX:
         transaction_service.create_transaction(
             session,
+            DEMO_USER_ID,
             TransactionCreate(
                 type="expense",
                 amount=Decimal(amount),
@@ -73,6 +74,7 @@ def seeded_session():
         )
     commitment_service.create_commitment(
         session,
+        DEMO_USER_ID,
         CommitmentCreate(
             name="Alquiler",
             amount=Decimal("300000"),

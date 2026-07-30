@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -45,13 +46,17 @@ def to_commitment_inputs(commitments: list[Commitment]) -> list[CommitmentInput]
     ]
 
 
-def build_dashboard_summary(session: Session, as_of: date | None = None) -> dict[str, Any]:
-    """Resumen financiero + proyección de fin de mes del perfil demo.
+def build_dashboard_summary(
+    session: Session, user_id: UUID, as_of: date | None = None
+) -> dict[str, Any]:
+    """Resumen financiero + proyección de fin de mes del usuario.
 
-    Lanza NotFoundError si el perfil no existe. Solo lectura: no toca la base.
+    Lanza NotFoundError si el perfil no existe. Solo lectura: no toca la base. El motor
+    financiero no cambia: recibe el perfil y los compromisos de ESE usuario y calcula
+    igual que siempre.
     """
-    profile = get_profile(session)
-    commitments = commitment_service.list_commitments(session)
+    profile = get_profile(session, user_id)
+    commitments = commitment_service.list_commitments(session, user_id)
     today = as_of or date.today()
 
     profile_input = to_profile_input(profile)

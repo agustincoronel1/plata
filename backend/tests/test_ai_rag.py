@@ -34,6 +34,7 @@ def _tx(
 ):
     return ts.create_transaction(
         session,
+        DEMO_USER_ID,
         TransactionCreate(
             type=tx_type,
             amount=Decimal(amount),
@@ -133,6 +134,7 @@ def test_tool_search_con_fecha_suma_solo_ids_relevantes(
         draft_store=InMemoryDraftStore(),
         gateway=AIGateway(MockAIProvider()),
         as_of=date(2026, 7, 24),
+        user_id=DEMO_USER_ID,
     )
 
     result = run_tool(
@@ -162,6 +164,7 @@ def test_tool_search_sin_evidencia_no_inventa_total(
         draft_store=InMemoryDraftStore(),
         gateway=AIGateway(MockAIProvider()),
         as_of=date(2026, 7, 24),
+        user_id=DEMO_USER_ID,
     )
 
     result = run_tool(
@@ -193,7 +196,7 @@ def test_borrar_movimiento_borra_el_indice(
 ) -> None:
     make_profile()
     tx = _tx(db_session, "transporte", "12000", "nafta")
-    ts.delete_transaction(db_session, tx.id)
+    ts.delete_transaction(db_session, DEMO_USER_ID, tx.id)
     doc = db_session.execute(
         select(TransactionSearchDocument).where(TransactionSearchDocument.transaction_id == tx.id)
     ).scalar_one_or_none()

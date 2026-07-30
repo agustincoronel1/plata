@@ -2,3 +2,5 @@
 {"message": "¿Qué pagos tengo antes de cobrar?", "expects_evidence": false, "must_be_grounded": true}
 {"message": "Buscar gastos de nafta", "expects_evidence": true, "must_be_grounded": true}
 {"message": "¿Puedo comprar algo de 900 mil en 9 cuotas?", "expects_evidence": false, "must_be_grounded": true}
+{"message": "¿Cuánto puedo gastar por día hasta cobrar?", "expects_evidence": false, "must_be_grounded": true}
+{"message": "¿Puedo gastar 8.000 en ropa hoy?", "expects_evidence": false, "must_be_grounded": true}

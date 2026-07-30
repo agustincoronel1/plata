@@ -63,7 +63,13 @@ class OpenAIEmbeddingProvider:  # pragma: no cover - requiere red y API key
             raise AIProviderUnavailableError("Embeddings reales no configurados (falta API key).")
         from openai import OpenAI
 
-        client = OpenAI(api_key=self._settings.ai_api_key)
+        # Mismos límites que el resto del proveedor real: una llamada de embeddings sin
+        # timeout puede colgar una escritura entera.
+        client = OpenAI(
+            api_key=self._settings.ai_api_key,
+            timeout=self._settings.ai_timeout_seconds,
+            max_retries=self._settings.ai_max_retries,
+        )
         resp = client.embeddings.create(model=self.model, input=text)
         return resp.data[0].embedding
 

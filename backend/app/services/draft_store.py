@@ -20,6 +20,12 @@ Hay dos implementaciones detrás de la misma interfaz (`DraftStore`):
 
 Nunca guarda API keys ni respuestas crudas del modelo: solo el borrador estructurado ya
 serializado y el texto de origen.
+
+Todo borrador pertenece a un usuario. `user_id` es keyword-only y obligatorio en cada
+operación: sin valor por defecto no se puede tocar el borrador de otra persona por olvido.
+El filtro por dueño va SIEMPRE en la misma consulta que el id, y un borrador ajeno se
+comporta igual que uno inexistente (`DraftNotFoundError` → 404): el código de estado no
+sirve para averiguar si existe.
 """
 
 from __future__ import annotations
@@ -55,6 +61,8 @@ class Draft:
     """Un borrador temporal. `payload` es el borrador estructurado ya serializado."""
 
     draft_id: UUID
+    # Dueño del borrador. Sale del JWT verificado, nunca del cuerpo ni del modelo.
+    user_id: UUID
     payload: dict[str, Any]
     source_text: str
     status: DraftStatus
@@ -66,25 +74,27 @@ class DraftStore(ABC):
     """Interfaz común a los stores en memoria y en PostgreSQL."""
 
     @abstractmethod
-    def create(self, payload: dict[str, Any], source_text: str) -> Draft: ...
+    def create(self, payload: dict[str, Any], source_text: str, *, user_id: UUID) -> Draft:
+        """Crea un borrador propiedad de `user_id`."""
 
     @abstractmethod
-    def get(self, draft_id: UUID) -> Draft: ...
+    def get(self, draft_id: UUID, *, user_id: UUID) -> Draft:
+        """Borrador propio. `DraftNotFoundError` si no existe o es de otra persona."""
 
     @abstractmethod
-    def claim_for_confirmation(self, draft_id: UUID) -> Draft:
+    def claim_for_confirmation(self, draft_id: UUID, *, user_id: UUID) -> Draft:
         """pending → confirming, atómico. 409 si ya está siendo usado o consumido."""
 
     @abstractmethod
-    def release_to_pending(self, draft_id: UUID) -> Draft:
+    def release_to_pending(self, draft_id: UUID, *, user_id: UUID) -> Draft:
         """confirming → pending (cuando la persistencia falla y hay que reintentar)."""
 
     @abstractmethod
-    def mark_confirmed(self, draft_id: UUID) -> Draft:
+    def mark_confirmed(self, draft_id: UUID, *, user_id: UUID) -> Draft:
         """confirming → confirmed (después de crear el movimiento)."""
 
     @abstractmethod
-    def mark_rejected(self, draft_id: UUID) -> Draft:
+    def mark_rejected(self, draft_id: UUID, *, user_id: UUID) -> Draft:
         """pending → rejected. Rechazar no toca la base."""
 
 
@@ -101,10 +111,11 @@ class InMemoryDraftStore(DraftStore):
         self._lock = threading.Lock()
         self._drafts: dict[UUID, Draft] = {}
 
-    def create(self, payload: dict[str, Any], source_text: str) -> Draft:
+    def create(self, payload: dict[str, Any], source_text: str, *, user_id: UUID) -> Draft:
         now = self._clock()
         draft = Draft(
             draft_id=uuid4(),
+            user_id=user_id,
             payload=payload,
             source_text=source_text,
             status=DraftStatus.PENDING,
@@ -115,42 +126,51 @@ class InMemoryDraftStore(DraftStore):
             self._drafts[draft.draft_id] = draft
         return draft
 
-    def get(self, draft_id: UUID) -> Draft:
+    def get(self, draft_id: UUID, *, user_id: UUID) -> Draft:
         with self._lock:
-            draft = self._require_locked(draft_id)
+            draft = self._require_locked(draft_id, user_id)
             draft = self._expire_if_needed_locked(draft)
             if draft.status == DraftStatus.EXPIRED:
                 raise DraftExpiredError
             return draft
 
-    def claim_for_confirmation(self, draft_id: UUID) -> Draft:
-        return self._transition(draft_id, DraftStatus.CONFIRMING, require=DraftStatus.PENDING)
+    def claim_for_confirmation(self, draft_id: UUID, *, user_id: UUID) -> Draft:
+        return self._transition(
+            draft_id, user_id, DraftStatus.CONFIRMING, require=DraftStatus.PENDING
+        )
 
-    def release_to_pending(self, draft_id: UUID) -> Draft:
-        return self._transition(draft_id, DraftStatus.PENDING, require=DraftStatus.CONFIRMING)
+    def release_to_pending(self, draft_id: UUID, *, user_id: UUID) -> Draft:
+        return self._transition(
+            draft_id, user_id, DraftStatus.PENDING, require=DraftStatus.CONFIRMING
+        )
 
-    def mark_confirmed(self, draft_id: UUID) -> Draft:
-        return self._transition(draft_id, DraftStatus.CONFIRMED, require=DraftStatus.CONFIRMING)
+    def mark_confirmed(self, draft_id: UUID, *, user_id: UUID) -> Draft:
+        return self._transition(
+            draft_id, user_id, DraftStatus.CONFIRMED, require=DraftStatus.CONFIRMING
+        )
 
-    def mark_rejected(self, draft_id: UUID) -> Draft:
-        return self._transition(draft_id, DraftStatus.REJECTED, require=DraftStatus.PENDING)
+    def mark_rejected(self, draft_id: UUID, *, user_id: UUID) -> Draft:
+        return self._transition(
+            draft_id, user_id, DraftStatus.REJECTED, require=DraftStatus.PENDING
+        )
 
     # --- Internos (siempre bajo lock) ---
 
     def _transition(
-        self, draft_id: UUID, new_status: DraftStatus, *, require: DraftStatus
+        self, draft_id: UUID, user_id: UUID, new_status: DraftStatus, *, require: DraftStatus
     ) -> Draft:
         with self._lock:
-            draft = self._require_locked(draft_id)
+            draft = self._require_locked(draft_id, user_id)
             draft = self._expire_if_needed_locked(draft)
             self._assert_status(draft, require)
             updated = replace(draft, status=new_status)
             self._drafts[draft_id] = updated
             return updated
 
-    def _require_locked(self, draft_id: UUID) -> Draft:
+    def _require_locked(self, draft_id: UUID, user_id: UUID) -> Draft:
+        """El borrador de otra persona es indistinguible de uno inexistente."""
         draft = self._drafts.get(draft_id)
-        if draft is None:
+        if draft is None or draft.user_id != user_id:
             raise DraftNotFoundError
         return draft
 

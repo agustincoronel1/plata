@@ -139,7 +139,7 @@ export function makeSimulation(overrides = {}) {
   }
 }
 
-// ---------- IA (Día 4 ampliado) ----------
+// ---------- IA ----------
 
 export function makeParseDraft(overrides = {}) {
   return {
@@ -169,11 +169,23 @@ export function makeParseDraft(overrides = {}) {
   }
 }
 
+// Respuesta del copiloto ya presentada: texto corto en es-AR y "cómo lo resolví" humano.
 export function makeChatResponse(overrides = {}) {
   return {
     conversation_id: '77777777-7777-4777-8777-777777777777',
     message_id: '66666666-6666-4666-8666-666666666666',
-    answer: 'Hoy podés gastar $210.000 en total.',
+    answer:
+      'Podés gastar hasta $210.000 hoy.\n\nEse monto ya contempla tus próximos pagos, el dinero protegido y tu colchón de seguridad.\n\nHasta que cobres, tu límite recomendado es de $26.250 por día.',
+    structured_answer: {
+      verdict: 'yes',
+      headline: 'Podés gastar hasta $210.000 hoy.',
+      explanation:
+        'Ese monto ya contempla tus próximos pagos, el dinero protegido y tu colchón de seguridad.',
+      recommendation: 'Hasta que cobres, tu límite recomendado es de $26.250 por día.',
+      details: [],
+      how_i_solved_it:
+        'Tomé tu saldo de $620.000 y resté $250.000 de compromisos, $120.000 protegidos y $40.000 de colchón. El resultado es un disponible seguro de $210.000.',
+    },
     intent: 'dashboard_summary',
     tools_used: [{ name: 'get_financial_summary', arguments: {}, ok: true, duration_ms: 2 }],
     evidence: [],

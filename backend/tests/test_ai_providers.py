@@ -76,6 +76,55 @@ def test_mock_es_deterministico() -> None:
     assert a.parsed_output == b.parsed_output
 
 
+def test_openai_no_retiene_el_texto_financiero(monkeypatch) -> None:
+    """El parser real debe mandar `store=False`: el texto del usuario no se retiene."""
+    from types import SimpleNamespace
+
+    from app.ai.providers import openai as openai_provider
+
+    records: list[dict] = []
+
+    class FakeResponses:
+        def parse(self, **kwargs):
+            records.append(kwargs)
+            return SimpleNamespace(
+                output_parsed=TransactionParseModelOutput.model_validate(
+                    {
+                        "intent": "unknown",
+                        "transaction": None,
+                        "confidence": "0.5",
+                        "missing_fields": [],
+                        "ambiguities": [],
+                        "explanation": "sin datos",
+                    }
+                ),
+                usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+                id="resp_test",
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr(
+        openai_provider,
+        "_load_sdk",
+        lambda: (FakeOpenAI, RuntimeError, TimeoutError),
+    )
+
+    provider = openai_provider.OpenAIProvider(
+        Settings(ai_provider="openai", ai_api_key="sk-test", ai_model="gpt-test")
+    )
+    provider.generate_structured(
+        system_prompt="sys",
+        user_input="hola",
+        response_schema=TransactionParseModelOutput,
+        metadata=AS_OF,
+    )
+
+    assert records[0]["store"] is False
+
+
 def test_openai_sin_api_key_falla_solo_al_usarse() -> None:
     # Construir el proveedor real sin key NO debe fallar (no bloquea el arranque)...
     from app.ai.providers.openai import OpenAIProvider

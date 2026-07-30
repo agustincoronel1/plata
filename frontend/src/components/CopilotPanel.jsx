@@ -1,23 +1,31 @@
 import { useState } from 'react'
 
+import Icon from './Icon'
+import AIUsageNotice from './AIUsageNotice'
+import { AI_USAGE_KINDS, getAIUsage } from '../services/aiUsage'
 import {
   ApiError,
   approveCopilotAction,
   chatCopilot,
   rejectCopilotAction,
 } from '../services/api'
+import { formatDate } from '../services/format'
 
+// Ejemplos de arranque. Cada uno cae en una intención que el backend ya resuelve
+// (resumen, compromisos, alta de movimiento, simulación en cuotas): no prometen nada que
+// el copiloto no sepa hacer. Se envían solo si la persona los toca.
 const SUGGESTIONS = [
   '¿Cuánto puedo gastar hoy?',
-  'Explicame mi disponible',
   '¿Qué pagos tengo antes de cobrar?',
-  'Buscar gastos parecidos',
+  'Gasté 25 mil en combustible.',
+  '¿Me conviene comprar una notebook en cuotas?',
 ]
 
 /**
- * Copiloto financiero: conversación con el agente. Muestra "Pensando…", qué herramientas
- * usó (en una sección técnica discreta), la evidencia, y pausa las escrituras para que la
- * persona apruebe. Nunca muestra prompts, API key, cadena de razonamiento ni SQL.
+ * Copiloto financiero: conversación con el agente. Muestra "Pensando…", cómo llegó al
+ * número (en castellano, no con nombres de herramientas), la evidencia, y pausa las
+ * escrituras para que la persona apruebe. Nunca muestra prompts, API key, cadena de
+ * razonamiento, SQL ni campos internos del backend.
  */
 export default function CopilotPanel({ onActionApplied }) {
   const [conversationId, setConversationId] = useState(null)
@@ -26,6 +34,8 @@ export default function CopilotPanel({ onActionApplied }) {
   const [thinking, setThinking] = useState(false)
   const [pending, setPending] = useState(null) // { conversationId, action, tools, evidence }
   const [error, setError] = useState(null)
+  // Cuánta cuota diaria queda. La informa el backend en cada respuesta; acá solo se muestra.
+  const [usage, setUsage] = useState(() => getAIUsage(AI_USAGE_KINDS.copilotChat))
   const chatLocked = Boolean(pending)
 
   function pushMessage(role, content) {
@@ -56,17 +66,22 @@ export default function CopilotPanel({ onActionApplied }) {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'El copiloto no está disponible.')
     } finally {
+      // También después de un error: un 429 o un fallo del modelo cambian lo que queda.
+      setUsage(getAIUsage(AI_USAGE_KINDS.copilotChat))
       setThinking(false)
     }
   }
 
   function attachDetails(response) {
-    if (response.tools_used?.length || response.evidence?.length) {
+    // "Cómo lo resolví" es la explicación en castellano que arma el backend; los nombres
+    // de las herramientas quedan en la traza del servidor, no a la vista de la persona.
+    const how = response.structured_answer?.how_i_solved_it
+    if (how || response.evidence?.length) {
       setMessages((current) => {
         const copy = [...current]
         const last = copy[copy.length - 1]
         if (last?.role === 'assistant') {
-          last.tools = response.tools_used
+          last.how = how
           last.evidence = response.evidence
         }
         return copy
@@ -75,7 +90,7 @@ export default function CopilotPanel({ onActionApplied }) {
   }
 
   async function resolvePending(approve) {
-    if (!pending) return
+    if (!pending || thinking) return
     setThinking(true)
     setError(null)
     try {
@@ -93,40 +108,47 @@ export default function CopilotPanel({ onActionApplied }) {
 
   return (
     <section className="copilot" aria-labelledby="copilot-title">
-      <div className="section-head">
-        <h2 className="section-head__title" id="copilot-title">
-          Copiloto financiero
-        </h2>
+      <div className="copilot__head">
+        <span className="copilot__badge">
+          <Icon name="sparkle" />
+        </span>
+        <div>
+          <h2 className="copilot__title" id="copilot-title">
+            Copiloto financiero
+          </h2>
+          <p className="copilot__subtitle">Responde con tus números, no con generalidades.</p>
+        </div>
       </div>
 
       {messages.length === 0 && (
-        <div className="copilot__suggestions">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="btn btn--ghost btn--small"
-              onClick={() => send(s)}
-              disabled={chatLocked}
-            >
-              {s}
-            </button>
-          ))}
+        <div className="copilot__empty">
+          <p className="copilot__empty-text" id="copilot-examples-label">
+            Todavía no le preguntaste nada. Podés escribirle o probar con un ejemplo:
+          </p>
+          <div className="copilot__suggestions" role="group" aria-labelledby="copilot-examples-label">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="copilot__suggestion"
+                onClick={() => send(s)}
+                disabled={chatLocked}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       <ol className="copilot__messages">
         {messages.map((m) => (
           <li key={m.id} className={`copilot__msg copilot__msg--${m.role}`}>
-            <p>{m.content}</p>
-            {m.tools?.length > 0 && (
+            <p className="copilot__text">{m.content}</p>
+            {m.how && (
               <details className="copilot__tools">
                 <summary>Cómo lo resolví</summary>
-                <ul>
-                  {m.tools.map((t, i) => (
-                    <li key={`${t.name}-${i}`}>{t.name}</li>
-                  ))}
-                </ul>
+                <p>{m.how}</p>
               </details>
             )}
             {m.evidence?.length > 0 && (
@@ -135,7 +157,7 @@ export default function CopilotPanel({ onActionApplied }) {
                 <ul>
                   {m.evidence.map((e) => (
                     <li key={e.evidence_id}>
-                      {e.title} · {e.occurred_on} <span className="copilot__method">({e.retrieval_method})</span>
+                      {e.title} · {formatDate(e.occurred_on)}
                     </li>
                   ))}
                 </ul>
@@ -156,10 +178,10 @@ export default function CopilotPanel({ onActionApplied }) {
             <strong>Requiere tu aprobación:</strong> {pending.action.summary}
           </p>
           <div className="form__actions">
-            <button type="button" className="btn btn--ghost" onClick={() => resolvePending(false)} disabled={thinking}>
+            <button type="button" className="btn btn--ghost btn--small" onClick={() => resolvePending(false)} disabled={thinking}>
               Rechazar
             </button>
-            <button type="button" className="btn btn--primary" onClick={() => resolvePending(true)} disabled={thinking}>
+            <button type="button" className="btn btn--primary btn--small" onClick={() => resolvePending(true)} disabled={thinking}>
               Aprobar y registrar
             </button>
           </div>
@@ -172,6 +194,8 @@ export default function CopilotPanel({ onActionApplied }) {
           {error}
         </p>
       )}
+
+      <AIUsageNotice usage={usage} />
 
       <form
         className="copilot__input"
@@ -191,8 +215,13 @@ export default function CopilotPanel({ onActionApplied }) {
           placeholder="Preguntá algo sobre tu plata…"
           disabled={thinking || chatLocked}
         />
-        <button type="submit" className="btn btn--primary" disabled={thinking || chatLocked || !input.trim()}>
-          Enviar
+        <button
+          type="submit"
+          className="icon-btn icon-btn--primary"
+          aria-label="Enviar"
+          disabled={thinking || chatLocked || !input.trim()}
+        >
+          <Icon name="send" />
         </button>
       </form>
     </section>

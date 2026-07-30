@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from datetime import date
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.ai.agent.graph import close_checkpointer, get_compiled_graph
@@ -9,9 +10,31 @@ from app.ai.providers.mock import MockAIProvider
 from app.core.config import settings
 from app.services import ai_chat_service
 from app.services.draft_store_pg import PostgresDraftStore
-from tests.conftest import requires_postgres
+from tests.conftest import TEST_USER_ID, requires_postgres
 
 pytestmark = requires_postgres
+
+
+@pytest.fixture(scope="session", autouse=True)
+def checkpoint_schema_ready() -> None:
+    """Aplica el esquema del checkpointer antes de que ningún test abra su transacción.
+
+    `PostgresSaver.setup()` crea sus tablas con `CREATE INDEX CONCURRENTLY`, que espera a
+    que terminen TODAS las transacciones abiertas, aunque sean sobre tablas ajenas. Contra
+    una base recién creada, si esa primera aplicación cayera dentro de un test, esperaría a
+    la transacción externa de `db_session`, que a su vez espera a que el test termine:
+    bloqueo mutuo permanente.
+
+    Este fixture es de alcance `session`, así que corre antes que el `db_session` de cada
+    test y sobre una conexión propia, sin ninguna transacción de test abierta. Con el
+    esquema ya aplicado, los `setup()` que corren dentro de los tests no encuentran
+    migraciones pendientes y no ejecutan DDL. Es idempotente: repetirlo no aplica nada.
+    """
+    from langgraph.checkpoint.postgres import PostgresSaver
+
+    conn_string = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
+    with PostgresSaver.from_conn_string(conn_string) as saver:
+        saver.setup()
 
 
 def test_postgres_checkpoint_recupera_pausa_y_aprueba(
@@ -30,6 +53,7 @@ def test_postgres_checkpoint_recupera_pausa_y_aprueba(
             as_of=date(2026, 7, 24),
             draft_store=store,
             gateway=gateway,
+            user_id=TEST_USER_ID,
         )
         assert first.requires_approval is True
         conversation_id = first.conversation_id
@@ -44,6 +68,7 @@ def test_postgres_checkpoint_recupera_pausa_y_aprueba(
             as_of=date(2026, 7, 24),
             draft_store=store,
             gateway=gateway,
+            user_id=TEST_USER_ID,
         )
 
         assert approved.requires_approval is False
@@ -70,6 +95,7 @@ def test_postgres_checkpoint_conserva_compromiso_parcial(
             as_of=date(2026, 7, 24),
             draft_store=store,
             gateway=gateway,
+            user_id=TEST_USER_ID,
         )
         assert first.requires_approval is False
 
@@ -81,6 +107,7 @@ def test_postgres_checkpoint_conserva_compromiso_parcial(
             as_of=date(2026, 7, 24),
             draft_store=store,
             gateway=gateway,
+            user_id=TEST_USER_ID,
         )
 
         assert second.requires_approval is True

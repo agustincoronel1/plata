@@ -1,9 +1,21 @@
-"""Endpoints del copiloto financiero: /api/v1/ai/chat y conversaciones."""
+"""Endpoints del copiloto financiero: /api/v1/ai/chat y conversaciones.
+
+Todos exigen sesión. Sin un JWT válido se responde 401 antes de correr el grafo: no se
+llama al modelo, no se ejecutan tools, no se consulta el RAG y no se escribe nada.
+
+El `conversation_id` viaja por la URL, así que **no** alcanza como identificador del hilo:
+el thread del checkpointer se arma con el usuario adentro (ver `ai_chat_service`). Una
+conversación de otra cuenta resuelve un hilo vacío, no la conversación ajena.
+
+`chat` tiene cuota diaria; aprobar y rechazar no. Reanudar el grafo para aplicar una
+escritura ya aprobada no vuelve a llamar al modelo (va derecho a `apply_write`), así que
+no cuesta plata y limitarlo dejaría acciones pendientes imposibles de resolver.
+"""
 
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.ai.agent.schemas import (
@@ -13,8 +25,12 @@ from app.ai.agent.schemas import (
     ConversationResponse,
 )
 from app.ai.gateway import AIGateway, get_ai_gateway
+from app.api.usage_headers import apply_usage_headers, with_usage
 from app.core.database import get_db
-from app.services import ai_chat_service
+from app.core.security import CurrentUser
+from app.schemas.ai_usage import AIUsageResponse
+from app.services import ai_chat_service, ai_usage_service
+from app.services.ai_usage_service import AIUsageKind
 from app.services.draft_store import DraftStore, get_draft_store
 
 router = APIRouter(prefix="/ai", tags=["ai-copiloto"])
@@ -23,22 +39,54 @@ router = APIRouter(prefix="/ai", tags=["ai-copiloto"])
 @router.post("/chat", response_model=ChatResponse, summary="Hablar con el copiloto")
 def chat(
     payload: ChatRequest,
+    current_user: CurrentUser,
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
     store: Annotated[DraftStore, Depends(get_draft_store)],
     gateway: Annotated[AIGateway, Depends(get_ai_gateway)],
 ) -> ChatResponse:
-    return ai_chat_service.chat(
-        db, payload.message, payload.conversation_id, draft_store=store, gateway=gateway
-    )
+    # `quota.consume` se le pasa al servicio en vez de llamarlo acá: el servicio lo
+    # ejecuta después de descartar el 409 por acción pendiente, que es una validación
+    # que no llega a invocar al modelo y por lo tanto no debe gastar cuota.
+    with ai_usage_service.daily_quota(db, current_user.id, AIUsageKind.COPILOT_CHAT) as quota:
+        answer = ai_chat_service.chat(
+            db,
+            payload.message,
+            payload.conversation_id,
+            user_id=current_user.id,
+            draft_store=store,
+            gateway=gateway,
+            before_provider=quota.consume,
+        )
+
+    apply_usage_headers(response, quota.status)
+    # El servicio no sabe de cuotas: la metadata se adjunta acá, donde se reservó.
+    return with_usage(answer, quota.status)
+
+
+@router.get(
+    "/usage",
+    response_model=AIUsageResponse,
+    summary="Cuánta cuota de IA le queda hoy a la cuenta",
+    description=(
+        "Uso del día para las operaciones de IA con límite, más el umbral a partir del "
+        "cual conviene avisar. Solo lectura: consultar no gasta cuota. El día se corta a "
+        "las 00:00 de Argentina."
+    ),
+)
+def get_usage(
+    current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]
+) -> AIUsageResponse:
+    return AIUsageResponse.from_status(ai_usage_service.get_all_status(db, current_user.id))
 
 
 @router.get(
     "/conversations/{conversation_id}",
     response_model=ConversationResponse,
-    summary="Historial de una conversación",
+    summary="Historial de una conversación propia",
 )
-def get_conversation(conversation_id: UUID) -> ConversationResponse:
-    return ai_chat_service.get_conversation(conversation_id)
+def get_conversation(conversation_id: UUID, current_user: CurrentUser) -> ConversationResponse:
+    return ai_chat_service.get_conversation(conversation_id, user_id=current_user.id)
 
 
 @router.post(
@@ -49,12 +97,19 @@ def get_conversation(conversation_id: UUID) -> ConversationResponse:
 def approve(
     conversation_id: UUID,
     payload: ApprovalRequest,
+    current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     store: Annotated[DraftStore, Depends(get_draft_store)],
     gateway: Annotated[AIGateway, Depends(get_ai_gateway)],
 ) -> ChatResponse:
     return ai_chat_service.resume(
-        db, conversation_id, payload.action_id, approve=True, draft_store=store, gateway=gateway
+        db,
+        conversation_id,
+        payload.action_id,
+        user_id=current_user.id,
+        approve=True,
+        draft_store=store,
+        gateway=gateway,
     )
 
 
@@ -66,10 +121,17 @@ def approve(
 def reject(
     conversation_id: UUID,
     payload: ApprovalRequest,
+    current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     store: Annotated[DraftStore, Depends(get_draft_store)],
     gateway: Annotated[AIGateway, Depends(get_ai_gateway)],
 ) -> ChatResponse:
     return ai_chat_service.resume(
-        db, conversation_id, payload.action_id, approve=False, draft_store=store, gateway=gateway
+        db,
+        conversation_id,
+        payload.action_id,
+        user_id=current_user.id,
+        approve=False,
+        draft_store=store,
+        gateway=gateway,
     )

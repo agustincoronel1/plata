@@ -35,11 +35,13 @@ def _cleanup() -> None:
 
 
 @pytest.fixture(autouse=True)
-def isolated_user(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("app.services.transaction_service.DEMO_USER_ID", TEST_USER_ID)
-    monkeypatch.setattr("app.services.commitment_service.DEMO_USER_ID", TEST_USER_ID)
-    monkeypatch.setattr("app.services.profile_service.DEMO_USER_ID", TEST_USER_ID)
-    monkeypatch.setattr("app.services.draft_store_pg.DEMO_USER_ID", TEST_USER_ID)
+def isolated_user():
+    """Aísla estos tests en su propio usuario, sin tocar el perfil demo.
+
+    Ya no hace falta parchear ninguna constante: tanto los servicios financieros como los
+    de IA reciben el `user_id` como argumento explícito. Este archivo pasa TEST_USER_ID en
+    cada llamada y limpia solo lo suyo.
+    """
     _cleanup()
     yield
     _cleanup()
@@ -61,6 +63,29 @@ def _reset() -> None:
             )
         )
         session.commit()
+
+
+def _stored_transactions(session) -> list[Transaction]:
+    """Movimientos de TEST_USER_ID.
+
+    Las assertions de atomicidad cuentan filas, así que deben filtrar por `user_id`: la
+    base de desarrollo comparte tablas con el usuario demo y el resultado del test no
+    puede depender de que las tablas estén vacías.
+    """
+    return list(
+        session.execute(select(Transaction).where(Transaction.user_id == TEST_USER_ID))
+        .scalars()
+        .all()
+    )
+
+
+def _stored_commitments(session) -> list[Commitment]:
+    """Compromisos de TEST_USER_ID, filtrados por el mismo motivo que los movimientos."""
+    return list(
+        session.execute(select(Commitment).where(Commitment.user_id == TEST_USER_ID))
+        .scalars()
+        .all()
+    )
 
 
 def _tx_payload() -> dict:
@@ -119,7 +144,7 @@ class PlannedBrain:
 
 def test_confirmacion_concurrente_postgres_crea_una_transaccion() -> None:
     _reset()
-    draft = PostgresDraftStore().create(_tx_payload(), "nafta")
+    draft = PostgresDraftStore().create(_tx_payload(), "nafta", user_id=TEST_USER_ID)
     barrier = threading.Barrier(2)
     results: list[str] = []
 
@@ -132,6 +157,7 @@ def test_confirmacion_concurrente_postgres_crea_una_transaccion() -> None:
                     PostgresDraftStore(),
                     draft.draft_id,
                     TransactionConfirmRequest(confirmed=True),
+                    user_id=TEST_USER_ID,
                 )
                 results.append("ok")
             except DraftAlreadyUsedError:
@@ -144,8 +170,8 @@ def test_confirmacion_concurrente_postgres_crea_una_transaccion() -> None:
         thread.join()
 
     with SessionLocal() as session:
-        count = session.execute(select(Transaction)).scalars().all()
-        stored = PostgresDraftStore().get(draft.draft_id)
+        count = _stored_transactions(session)
+        stored = PostgresDraftStore().get(draft.draft_id, user_id=TEST_USER_ID)
     assert sorted(results) == ["conflict", "ok"]
     assert len(count) == 1
     assert stored.status is DraftStatus.CONFIRMED
@@ -160,6 +186,7 @@ def test_dos_escrituras_misma_ronda_crean_un_solo_draft_postgres() -> None:
             draft_store=PostgresDraftStore(session=session),
             gateway=AIGateway(MockAIProvider()),
             brain=PlannedBrain(),
+            user_id=TEST_USER_ID,
         )
         drafts = (
             session.execute(select(AIDraft).where(AIDraft.user_id == TEST_USER_ID)).scalars().all()
@@ -195,6 +222,7 @@ def test_escritura_incompleta_y_segunda_escritura_crean_un_solo_draft_postgres()
                     },
                 ]
             ),
+            user_id=TEST_USER_ID,
         )
         drafts = (
             session.execute(select(AIDraft).where(AIDraft.user_id == TEST_USER_ID)).scalars().all()
@@ -210,11 +238,11 @@ def test_rollback_despues_de_flush_financiero_permite_reintento(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset()
-    draft = PostgresDraftStore().create(_tx_payload(), "nafta")
+    draft = PostgresDraftStore().create(_tx_payload(), "nafta", user_id=TEST_USER_ID)
     original = transaction_service.create_transaction_no_commit
 
-    def boom(session, payload):
-        tx = original(session, payload)
+    def boom(session, user_id, payload):
+        tx = original(session, user_id, payload)
         assert tx.id is not None
         raise RuntimeError("boom before commit")
 
@@ -225,11 +253,14 @@ def test_rollback_despues_de_flush_financiero_permite_reintento(
             PostgresDraftStore(),
             draft.draft_id,
             TransactionConfirmRequest(confirmed=True),
+            user_id=TEST_USER_ID,
         )
 
     with SessionLocal() as session:
-        assert session.execute(select(Transaction)).scalars().all() == []
-    assert PostgresDraftStore().get(draft.draft_id).status is DraftStatus.PENDING
+        assert _stored_transactions(session) == []
+    assert (
+        PostgresDraftStore().get(draft.draft_id, user_id=TEST_USER_ID).status is DraftStatus.PENDING
+    )
 
     monkeypatch.setattr(transaction_service, "create_transaction_no_commit", original)
     with SessionLocal() as session:
@@ -238,44 +269,51 @@ def test_rollback_despues_de_flush_financiero_permite_reintento(
             PostgresDraftStore(),
             draft.draft_id,
             TransactionConfirmRequest(confirmed=True),
+            user_id=TEST_USER_ID,
         )
     with SessionLocal() as session:
-        assert len(session.execute(select(Transaction)).scalars().all()) == 1
+        assert len(_stored_transactions(session)) == 1
 
 
 class FailingConfirmStore(PostgresDraftStore):
     def with_session(self, session):
         return FailingConfirmStore(ttl_seconds=int(self._ttl.total_seconds()), session=session)
 
-    def mark_confirmed(self, draft_id):
+    def mark_confirmed(self, draft_id, *, user_id):
         raise RuntimeError("boom confirming")
 
 
 def test_rollback_al_finalizar_no_duplica_movimiento() -> None:
     _reset()
-    draft = PostgresDraftStore().create(_tx_payload(), "nafta")
+    draft = PostgresDraftStore().create(_tx_payload(), "nafta", user_id=TEST_USER_ID)
     with SessionLocal() as session, pytest.raises(RuntimeError):
         ai_transaction_service.confirm_transaction(
             session,
             FailingConfirmStore(),
             draft.draft_id,
             TransactionConfirmRequest(confirmed=True),
+            user_id=TEST_USER_ID,
         )
 
     with SessionLocal() as session:
-        assert session.execute(select(Transaction)).scalars().all() == []
-    assert PostgresDraftStore().get(draft.draft_id).status is DraftStatus.PENDING
+        assert _stored_transactions(session) == []
+    assert (
+        PostgresDraftStore().get(draft.draft_id, user_id=TEST_USER_ID).status is DraftStatus.PENDING
+    )
 
 
 def test_commitment_rollback_y_reintento() -> None:
     _reset()
-    draft = PostgresDraftStore().create(_commitment_payload(), "alquiler")
+    draft = PostgresDraftStore().create(_commitment_payload(), "alquiler", user_id=TEST_USER_ID)
+    # El doble del contexto del copiloto. `user_id` es el mismo usuario aislado que usa
+    # el resto del archivo: el compromiso confirmado tiene que quedar en ese perfil.
     ctx = type(
         "Ctx",
         (),
         {
             "session": SessionLocal(),
             "draft_store": FailingConfirmStore(),
+            "user_id": TEST_USER_ID,
         },
     )()
     try:
@@ -285,13 +323,23 @@ def test_commitment_rollback_y_reintento() -> None:
         ctx.session.close()
 
     with SessionLocal() as session:
-        assert session.execute(select(Commitment)).scalars().all() == []
-    assert PostgresDraftStore().get(draft.draft_id).status is DraftStatus.PENDING
+        assert _stored_commitments(session) == []
+    assert (
+        PostgresDraftStore().get(draft.draft_id, user_id=TEST_USER_ID).status is DraftStatus.PENDING
+    )
 
-    ctx = type("Ctx", (), {"session": SessionLocal(), "draft_store": PostgresDraftStore()})()
+    ctx = type(
+        "Ctx",
+        (),
+        {
+            "session": SessionLocal(),
+            "draft_store": PostgresDraftStore(),
+            "user_id": TEST_USER_ID,
+        },
+    )()
     try:
         _confirm_commitment(ctx, draft.draft_id)
     finally:
         ctx.session.close()
     with SessionLocal() as session:
-        assert len(session.execute(select(Commitment)).scalars().all()) == 1
+        assert len(_stored_commitments(session)) == 1

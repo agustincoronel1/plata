@@ -64,11 +64,12 @@ describe('DashboardPage', () => {
     expect(screen.getAllByText(/120\.000/).length).toBeGreaterThan(0)
   })
 
-  it('muestra la configuración inicial si el perfil no existe (404)', async () => {
+  it('muestra la bienvenida si el perfil no existe (404)', async () => {
     api.getProfile.mockRejectedValue(new ApiError('Perfil financiero no encontrado', { status: 404 }))
     render(<DashboardPage />)
 
-    expect(await screen.findByText(/Configurá Plata para empezar/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /Tu plata, con contexto/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Configurar mi cuenta/i })).toBeInTheDocument()
   })
 
   it('maneja el estado de API desconectada', async () => {
@@ -79,7 +80,7 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('button', { name: /Reintentar/i })).toBeInTheDocument()
   })
 
-  it('tiene "Simular compra" habilitado (ya no dice Próximamente)', async () => {
+  it('tiene "Simular compra" habilitado', async () => {
     api.getProfile.mockResolvedValue(PROFILE)
     render(<DashboardPage />)
     await ready()

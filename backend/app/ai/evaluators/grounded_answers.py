@@ -19,6 +19,7 @@ from app.ai.evaluators._common import Metric, load_jsonl, print_report
 from app.ai.evaluators._dbharness import postgres_available, seeded_session
 from app.ai.gateway import AIGateway, build_provider
 from app.core.config import Settings
+from app.core.constants import DEMO_USER_ID
 from app.services import ai_chat_service
 from app.services.draft_store import InMemoryDraftStore
 
@@ -51,6 +52,7 @@ def run() -> int:
                 session,
                 row["message"],
                 uuid.uuid4(),
+                user_id=DEMO_USER_ID,
                 as_of=AS_OF,
                 draft_store=store,
                 gateway=gateway,

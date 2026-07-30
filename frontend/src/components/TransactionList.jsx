@@ -1,61 +1,80 @@
+import EmptyState from './EmptyState'
+import Icon from './Icon'
 import { formatDate, formatMoney } from '../services/format'
 
 /**
  * Lista de movimientos recientes. Ingreso y gasto se distinguen con texto ("Ingreso" /
- * "Gasto"), el signo del monto (+ / −) y estilo: nunca solo por color.
+ * "Gasto"), el signo del monto (+ / −) y el icono: nunca solo por color.
+ *
+ * Sin movimientos muestra un estado vacío con las dos formas de cargar el primero. Los
+ * botones reutilizan los mismos handlers que las acciones del dashboard: acá no se crea
+ * ningún formulario nuevo.
  */
-export default function TransactionList({ transactions, onEdit, onDelete }) {
+export default function TransactionList({
+  transactions,
+  onEdit,
+  onDelete,
+  onCreateManual,
+  onCreateWithAI,
+}) {
   if (transactions.length === 0) {
     return (
-      <p className="empty">
-        Todavía no registraste movimientos. Usá “Registrar movimiento” para cargar el
-        primero.
-      </p>
+      <EmptyState
+        icon="receipt"
+        title="Todavía no hay movimientos"
+        description="Registrá tu primer ingreso o gasto para que Plata calcule cuánto podés usar de verdad."
+      >
+        <button type="button" className="btn btn--primary" onClick={onCreateManual}>
+          Registrar manualmente
+        </button>
+        <button type="button" className="btn btn--ghost" onClick={onCreateWithAI}>
+          Escribilo con IA
+        </button>
+      </EmptyState>
     )
   }
 
   return (
-    <ul className="tx-list">
+    <ul className="row-list">
       {transactions.map((tx) => {
         const isIncome = tx.type === 'income'
         const detail = tx.description || tx.payment_method
         return (
-          <li className={`tx tx--${isIncome ? 'income' : 'expense'}`} key={tx.id}>
-            <div className="tx__body">
-              <p className="tx__top">
-                <span className={`tag tag--${isIncome ? 'income' : 'expense'}`}>
-                  {isIncome ? 'Ingreso' : 'Gasto'}
-                </span>
-                <span className="tx__category">{tx.category}</span>
-              </p>
-              <p className="tx__meta">
-                <span>{formatDate(tx.occurred_on)}</span>
-                {detail && <span className="tx__detail"> · {detail}</span>}
+          <li className={`row row--${isIncome ? 'income' : 'expense'}`} key={tx.id}>
+            <span className="row__icon">
+              <Icon name={isIncome ? 'arrowUp' : 'arrowDown'} />
+            </span>
+
+            <div className="row__body">
+              <p className="row__title">{tx.category}</p>
+              <p className="row__meta">
+                {isIncome ? 'Ingreso' : 'Gasto'} · {formatDate(tx.occurred_on)}
+                {detail && ` · ${detail}`}
               </p>
             </div>
 
-            <p className="tx__amount">
+            <p className="row__amount">
               <span aria-hidden="true">{isIncome ? '+ ' : '− '}</span>
               <span className="visually-hidden">{isIncome ? 'Ingreso de ' : 'Gasto de '}</span>
               {formatMoney(tx.amount)}
             </p>
 
-            <div className="tx__actions">
+            <div className="row__actions">
               <button
                 type="button"
-                className="btn btn--small"
+                className="icon-btn"
                 onClick={() => onEdit(tx)}
                 aria-label={`Editar movimiento de ${tx.category}`}
               >
-                Editar
+                <Icon name="pencil" />
               </button>
               <button
                 type="button"
-                className="btn btn--small btn--danger-ghost"
+                className="icon-btn icon-btn--danger"
                 onClick={() => onDelete(tx)}
                 aria-label={`Eliminar movimiento de ${tx.category}`}
               >
-                Eliminar
+                <Icon name="trash" />
               </button>
             </div>
           </li>

@@ -74,6 +74,8 @@ class OpenAIProvider:
                     {"role": "user", "content": user_input},
                 ],
                 text_format=response_schema,
+                # El texto financiero del usuario no se retiene del lado del proveedor.
+                store=False,
                 metadata=metadata or {},
             )
             latency_ms = int((time.monotonic() - started) * 1000)

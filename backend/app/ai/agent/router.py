@@ -52,7 +52,11 @@ def plan_tools(
             for call in args["_tool_calls"]
         ]
 
-    if intent in (AgentIntent.DASHBOARD_SUMMARY, AgentIntent.EXPLAIN_AVAILABLE_MONEY):
+    if intent in (
+        AgentIntent.DASHBOARD_SUMMARY,
+        AgentIntent.EXPLAIN_AVAILABLE_MONEY,
+        AgentIntent.DAILY_BUDGET,
+    ):
         return [{"name": "get_financial_summary", "arguments": {}}]
 
     if intent == AgentIntent.LIST_COMMITMENTS:
@@ -60,6 +64,17 @@ def plan_tools(
 
     if intent == AgentIntent.SEARCH_HISTORY:
         return [{"name": "search_transactions", "arguments": {"query": message}}]
+
+    if intent == AgentIntent.ONE_TIME_PURCHASE:
+        # Compra al contado: comprobación simple contra el disponible. Jamás el simulador
+        # de cuotas (si no, la respuesta hablaría de "primera cuota" para un pago único).
+        amount = args.get("amount")
+        if amount is None:
+            return []
+        arguments: dict[str, Any] = {"amount": str(Decimal(str(amount)))}
+        if args.get("category"):
+            arguments["category"] = args["category"]
+        return [{"name": "check_one_time_purchase", "arguments": arguments}]
 
     if intent == AgentIntent.SIMULATE_PURCHASE:
         amount, installments = _sim_params(args, last_simulation)

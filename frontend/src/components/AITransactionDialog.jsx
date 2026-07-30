@@ -1,6 +1,8 @@
 import { useState } from 'react'
 
+import { AI_USAGE_KINDS, getAIUsage } from '../services/aiUsage'
 import { ApiError, confirmAITransaction, parseAITransaction, rejectAITransaction } from '../services/api'
+import AIUsageNotice from './AIUsageNotice'
 import AIConfidenceIndicator from './AIConfidenceIndicator'
 import FeedbackMessage from './FeedbackMessage'
 import FormField from './FormField'
@@ -36,13 +38,19 @@ export default function AITransactionDialog({ onRegistered, onFallback, onClose 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
+  // Cuánta cuota diaria de interpretación queda. La decide el backend; acá solo se muestra.
+  const [usage, setUsage] = useState(() => getAIUsage(AI_USAGE_KINDS.transactionParse))
 
   function update(field, value) {
     setValues((current) => ({ ...current, [field]: value }))
   }
 
+  // `busy` bloquea los botones, pero además cortamos acá: interpretar puede tardar decenas
+  // de segundos y un segundo envío gastaría otra llamada al modelo o crearía otro borrador.
+  // Nunca reintentamos solos.
   async function handleParse(event) {
     event.preventDefault()
+    if (busy) return
     setBusy(true)
     setError(null)
     try {
@@ -53,6 +61,8 @@ export default function AITransactionDialog({ onRegistered, onFallback, onClose 
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo interpretar el texto.')
     } finally {
+      // También después de un error: un 429 cambia lo que queda por mostrar.
+      setUsage(getAIUsage(AI_USAGE_KINDS.transactionParse))
       setBusy(false)
     }
   }
@@ -70,6 +80,7 @@ export default function AITransactionDialog({ onRegistered, onFallback, onClose 
   }
 
   async function handleConfirm() {
+    if (busy) return
     setBusy(true)
     setError(null)
     setFieldErrors({})
@@ -84,6 +95,7 @@ export default function AITransactionDialog({ onRegistered, onFallback, onClose 
   }
 
   async function handleReject() {
+    if (busy) return
     if (!draft?.draft_id) {
       onClose()
       return
@@ -106,6 +118,8 @@ export default function AITransactionDialog({ onRegistered, onFallback, onClose 
 
   return (
     <Modal title="Escribilo con IA" titleId="ai-tx-title" onClose={onClose}>
+      {/* Una sola vez y arriba: vale para el paso de escritura y para el del borrador. */}
+      <AIUsageNotice usage={usage} />
       {phase === 'input' && (
         <form className="form" onSubmit={handleParse} noValidate>
           <FormField id="ai-text" label="Contá qué pasó, en tus palabras">

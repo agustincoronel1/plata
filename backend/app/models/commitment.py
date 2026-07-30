@@ -61,7 +61,8 @@ class Commitment(TimestampMixin, Base):
         default=CommitmentStatus.PENDING,
         server_default=text("'pending'"),
     )
-    # Marca informativa. La generación de las próximas ocurrencias no existe todavía.
+    # El motor lo proyecta en cada mes simulado; no se generan filas para las próximas
+    # ocurrencias.
     is_recurring: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )

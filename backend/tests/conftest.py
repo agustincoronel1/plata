@@ -13,6 +13,7 @@ schemas) no usan estas fixtures y corren siempre.
 """
 
 from collections.abc import Callable, Generator
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,11 +23,34 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.constants import DEMO_USER_ID
 from app.core.database import engine, get_db
+from app.core.security import get_current_user
 from app.main import app
 from app.models import UserProfile
+from app.schemas.auth import AuthenticatedUser
 
 API = "/api/v1"
+
+# Usuario autenticado por defecto en los tests. Es el mismo UUID del perfil demo: así los
+# tests que ya existían siguen describiendo el mismo escenario, y la fixture `db_session`
+# sigue partiendo de una base limpia. Verificar el JWT de verdad ya tiene sus propios
+# tests (test_auth_jwt.py); acá lo que se prueba es qué hace la API con la identidad ya
+# resuelta, así que la dependencia se sustituye en lugar de firmar tokens en cada test.
+TEST_USER_ID = DEMO_USER_ID
+TEST_USER_EMAIL = "demo@plata.test"
+
+# Segundo usuario, para los tests de aislamiento entre cuentas.
+OTHER_USER_ID = UUID("22222222-2222-4222-8222-222222222222")
+OTHER_USER_EMAIL = "otra-persona@plata.test"
 settings.ai_checkpoint_store = "memory"
+
+# Los tests NUNCA hablan con un proveedor real, pase lo que pase en backend/.env. Con
+# AI_PROVIDER=openai y una API key configurada, correr `pytest` gastaría plata de
+# verdad y dejaría de ser determinístico. Forzar los proveedores mock acá deja la suite
+# offline, gratis y reproducible; la validación real vive solo en app/scripts/real_ai_smoke.py.
+settings.ai_provider = "mock"
+settings.ai_model = "mock-transaction-parser-v1"
+settings.ai_api_key = ""
+settings.ai_embedding_provider = "mock"
 
 
 def _postgres_available() -> bool:
@@ -76,9 +100,63 @@ def db_session() -> Generator[Session, None, None]:
         connection.close()
 
 
+def _authenticated_as(user_id: UUID, email: str | None) -> Callable[[], AuthenticatedUser]:
+    """Sustituto de `get_current_user`: devuelve una identidad ya verificada."""
+
+    def override() -> AuthenticatedUser:
+        return AuthenticatedUser(id=user_id, email=email)
+
+    return override
+
+
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
-    """TestClient con get_db apuntando a la sesión transaccional del test."""
+    """TestClient autenticado como el usuario de test, sobre la sesión del test.
+
+    Sustituye dos dependencias: `get_db` (para que todo cuelgue de la transacción que se
+    revierte al final) y `get_current_user` (para no tener que firmar un JWT en cada test).
+    """
+
+    def override_get_db() -> Generator[Session, None, None]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = _authenticated_as(TEST_USER_ID, TEST_USER_EMAIL)
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client_for(db_session: Session) -> Generator[Callable[..., TestClient], None, None]:
+    """Fábrica de clientes autenticados como distintos usuarios.
+
+    Sirve para probar el aislamiento: `client_for(OTHER_USER_ID)` ve la API exactamente
+    como la vería otra persona con su propia sesión.
+    """
+
+    def override_get_db() -> Generator[Session, None, None]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    def _make(user_id: UUID, email: str | None = None) -> TestClient:
+        app.dependency_overrides[get_current_user] = _authenticated_as(user_id, email)
+        return TestClient(app)
+
+    try:
+        yield _make
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anonymous_client(db_session: Session) -> Generator[TestClient, None, None]:
+    """TestClient SIN sesión: `get_current_user` queda intacto y rechaza con 401.
+
+    Con esta fixture se comprueba que los endpoints financieros dejaron de ser públicos.
+    """
 
     def override_get_db() -> Generator[Session, None, None]:
         yield db_session

@@ -2,6 +2,8 @@
 
 Reglas (antes de mostrar la respuesta como válida):
 - Todo monto mencionado en la respuesta debe existir en los tool results o la evidencia.
+- La respuesta no puede exponer campos internos, jerga técnica, montos sin formato es-AR
+  ni pasarse de largo (esto lo evalúa `presentation.internal_leaks`).
 - Una escritura pendiente exige que approval_required sea verdadero.
 - No se ejecutan escrituras sin aprobación (garantizado por construcción del grafo).
 
@@ -14,6 +16,8 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 from typing import Any
+
+from app.ai.agent.presentation import internal_leaks
 
 _MONEY_IN_TEXT = re.compile(r"\$\s?(\d[\d.,]*)")
 
@@ -55,7 +59,9 @@ def known_amounts(tool_results: list[dict[str, Any]], evidence: list[dict[str, A
         _collect_numbers(result.get("data"), acc)
     for ev in evidence:
         _collect_numbers(ev.get("amount"), acc)
-    return acc
+    # Un margen negativo se cuenta en positivo ("quedarías $3.000 por debajo"): el valor
+    # absoluto de un número respaldado sigue estando respaldado.
+    return acc | {abs(value) for value in acc}
 
 
 def verify(
@@ -73,6 +79,8 @@ def verify(
         pesos = _to_int_pesos(match)
         if pesos is not None and pesos not in known:
             reasons.append(f"monto sin respaldo: ${match}")
+
+    reasons.extend(internal_leaks(answer))
 
     if pending_action and not approval_required:
         reasons.append("escritura pendiente sin marca de aprobación")

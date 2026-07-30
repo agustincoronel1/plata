@@ -1,0 +1,472 @@
+/**
+ * Estructura de aplicación: barra lateral (desktop), header, contenido y navegación
+ * inferior (mobile). Una sola de las dos navegaciones se ve a la vez.
+ */
+
+.app-shell {
+  min-height: 100dvh;
+  display: flex;
+  background-color: var(--color-background);
+}
+
+.app-shell__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Marca ---------- */
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+}
+
+.brand__mark {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.brand__mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.brand__word {
+  font-size: 1.0625rem;
+  font-weight: var(--weight-black);
+  letter-spacing: 0.16em;
+  line-height: 1;
+}
+
+.brand--lg .brand__mark {
+  width: 3rem;
+  height: 3rem;
+}
+
+.brand--lg .brand__word {
+  font-size: 1.5rem;
+  letter-spacing: 0.2em;
+}
+
+/* ---------- Barra lateral (desktop) ---------- */
+
+.sidebar {
+  display: none;
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  padding: var(--space-6) var(--space-3);
+  border-right: 1px solid var(--color-border);
+  background-color: var(--color-background-soft);
+}
+
+.sidebar__inner {
+  position: sticky;
+  top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.sidebar__nav ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Es una barra sólo de desktop (con puntero): 2.5rem de alto alcanza y le devuelve
+   ancho y altura visual a la columna central. */
+.nav-link {
+  width: 100%;
+  min-height: 2.5rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--text-small);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.nav-link:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.nav-link[aria-current="page"] {
+  background-color: var(--color-surface-raised);
+  color: var(--color-primary);
+}
+
+.nav-link__icon {
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+}
+
+.sidebar__footer {
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+}
+
+/* ---------- Header ---------- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-nav);
+  min-height: var(--topbar-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background-color: color-mix(in srgb, var(--color-background) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.topbar__brand {
+  flex-shrink: 0;
+}
+
+.topbar__greeting {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.topbar__hello {
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  line-height: 1.2;
+}
+
+.topbar__name {
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar__side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* En pantallas chicas el header se queda con el isotipo: el logotipo completo pelearía
+   espacio con el saludo, el estado y el avatar. */
+@media (width < 30rem) {
+  .topbar__brand .brand__word {
+    display: none;
+  }
+}
+
+.avatar {
+  width: var(--tap-target);
+  height: var(--tap-target);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-primary);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.avatar:hover {
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-primary);
+}
+
+/* Cerrar sesión: mismo tamaño de toque que el avatar, pero secundario (sin borde ni
+   fondo) para que no compita con las acciones del dashboard. */
+.topbar__signout {
+  width: var(--tap-target);
+  height: var(--tap-target);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.topbar__signout:hover {
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.topbar__signout svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Barra superior de las pantallas de arranque (carga, onboarding, acceso). */
+.boot__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ---------- Contenido ---------- */
+
+.content {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: var(--layout-max);
+  margin-inline: auto;
+  padding: var(--space-5) var(--space-4)
+    calc(var(--bottom-nav-height) + var(--safe-bottom) + var(--space-6));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.dashboard__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.dashboard__aside {
+  min-width: 0;
+}
+
+/* ---------- Pie ---------- */
+
+.app-footer {
+  padding: var(--space-6) var(--space-4)
+    calc(var(--bottom-nav-height) + var(--safe-bottom) + var(--space-5));
+  border-top: 1px solid var(--color-border);
+  text-align: center;
+}
+
+.app-footer__claim {
+  font-size: var(--text-small);
+  font-weight: var(--weight-semibold);
+  max-width: 30ch;
+  margin-inline: auto;
+}
+
+.app-footer__claim em {
+  font-style: normal;
+  color: var(--color-primary);
+}
+
+.app-footer__disclaimer {
+  margin-top: var(--space-2);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  max-width: 52ch;
+  margin-inline: auto;
+}
+
+/* ---------- Navegación inferior (mobile) ---------- */
+
+.bottom-nav {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: var(--z-nav);
+  padding: var(--space-2) var(--space-2) calc(var(--space-2) + var(--safe-bottom));
+  background-color: color-mix(in srgb, var(--color-background-soft) 92%, transparent);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--color-border);
+}
+
+.bottom-nav__list {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-1);
+  max-width: 32rem;
+  margin-inline: auto;
+}
+
+.bottom-nav__link {
+  width: 100%;
+  min-height: var(--tap-target);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 0.6875rem;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+
+.bottom-nav__link:hover {
+  color: var(--color-text);
+}
+
+.bottom-nav__link[aria-current="page"] {
+  color: var(--color-primary);
+  background-color: var(--color-surface);
+}
+
+.bottom-nav__icon {
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+/* ---------- Botón flotante del copiloto (mobile) ---------- */
+
+.fab {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(var(--bottom-nav-height) + var(--safe-bottom) + var(--space-3));
+  z-index: var(--z-fab);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  box-shadow: var(--shadow-primary);
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+
+.fab:hover {
+  background-color: var(--color-primary-soft);
+  transform: translateY(-1px);
+}
+
+.fab__icon {
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* ---------- Copiloto: tarjeta en desktop, hoja inferior en mobile ---------- */
+
+.copilot-dock__scrim,
+.copilot-dock__close {
+  display: none;
+}
+
+/* ---------- Arranque: carga, error y onboarding (sin dashboard detrás) ---------- */
+
+.boot {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.boot__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.boot__main {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 34rem;
+  margin-inline: auto;
+  padding: var(--space-4) var(--space-4) var(--space-7);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-5);
+}
+
+/* ---------- Desktop ---------- */
+
+@media (width >= 64rem) {
+  .sidebar {
+    display: block;
+  }
+
+  .bottom-nav,
+  .fab {
+    display: none;
+  }
+
+  .topbar {
+    padding-inline: var(--space-6);
+  }
+
+  .topbar__brand {
+    display: none;
+  }
+
+  .content {
+    padding: var(--space-6) var(--space-6) var(--space-8);
+    gap: var(--space-6);
+  }
+
+  .app-footer {
+    padding: var(--space-6);
+  }
+}
+
+@media (width >= 80rem) {
+  .content {
+    max-width: var(--layout-wide);
+  }
+
+  .dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--copilot-width);
+    gap: var(--space-6);
+    align-items: start;
+  }
+
+  .dashboard__aside {
+    position: sticky;
+    top: calc(var(--topbar-height) + var(--space-5));
+  }
+}

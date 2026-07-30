@@ -72,6 +72,47 @@ class AIDraftValidationError(AIError):
         super().__init__(detail)
 
 
+# Código estable para que el frontend distinga este 429 de cualquier otro sin mirar el
+# texto, que puede cambiar. Es lo único de la respuesta que no está pensado para leerse.
+DAILY_LIMIT_CODE = "daily_ai_limit_reached"
+
+# Un mensaje por operación: "el copiloto" y "las interpretaciones" no son lo mismo para
+# quien lo lee, y decir cuál se agotó evita que parezca que Plata entera dejó de funcionar.
+DAILY_LIMIT_MESSAGES = {
+    "copilot_chat": (
+        "Alcanzaste el límite diario del copiloto. Vas a poder volver a usarlo mañana."
+    ),
+    "transaction_parse": (
+        "Alcanzaste el límite diario de interpretaciones con IA. "
+        "Vas a poder volver a usarla mañana."
+    ),
+}
+
+
+class AIDailyLimitReachedError(AIError):
+    """La cuenta agotó su cuota diaria de esta operación de IA.
+
+    429 y no 403: el problema no es de permisos, es de cantidad, y se resuelve solo cuando
+    cambia el día.
+
+    Lleva el estado del contador (`usage`) para que la respuesta pueda decir de qué límite
+    se trata y cuándo se renueva. Nunca incluye el `user_id`: quien recibe el error ya sabe
+    quién es, y el dato no aporta nada a la respuesta.
+    """
+
+    status_code = 429
+    default_detail = (
+        "Llegaste al límite de uso de IA por hoy. Vuelve a estar disponible mañana; "
+        "mientras tanto podés seguir usando Plata con el formulario manual."
+    )
+
+    def __init__(self, usage: object | None = None, detail: str | None = None) -> None:
+        self.usage = usage
+        kind = getattr(usage, "kind", None)
+        message = detail or DAILY_LIMIT_MESSAGES.get(str(kind)) if kind else detail
+        super().__init__(message)
+
+
 # --- Errores del borrador (human-in-the-loop) ---
 
 

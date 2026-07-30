@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 
+import Icon from './Icon'
+
 /**
  * Diálogo accesible sobre el elemento nativo <dialog>.
  *
@@ -40,6 +42,7 @@ export default function Modal({ title, titleId, onClose, children }) {
     <dialog
       ref={ref}
       className="modal"
+      aria-modal="true"
       aria-labelledby={titleId}
       onCancel={handleCancel}
       onClick={handleClick}
@@ -49,8 +52,8 @@ export default function Modal({ title, titleId, onClose, children }) {
           <h2 className="modal__title" id={titleId}>
             {title}
           </h2>
-          <button type="button" className="modal__close" onClick={onClose} aria-label="Cerrar">
-            <span aria-hidden="true">×</span>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar">
+            <Icon name="close" />
           </button>
         </div>
         {children}

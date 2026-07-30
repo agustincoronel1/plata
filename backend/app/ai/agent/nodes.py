@@ -10,9 +10,9 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from app.ai.agent import router, verifier
+from app.ai.agent import presentation, router, verifier
 from app.ai.agent.brain import AgentBrain
-from app.ai.agent.schemas import AgentIntent
+from app.ai.agent.schemas import AgentIntent, StructuredAnswer
 from app.ai.agent.tools import (
     ToolContext,
     blocked_sensitive_tool_result,
@@ -140,9 +140,13 @@ def execute_tools(state: dict[str, Any], config: dict[str, Any]) -> dict[str, An
 
 
 def generate_answer(state: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
-    if state.get("agentic_done"):
-        return {"final_answer": state.get("final_answer", ""), "messages": []}
-    brain = _brain(config)
+    """Arma la respuesta. La presentación determinística manda; el texto libre es plan B.
+
+    Siempre se construye la respuesta estructurada a partir de los tool results. Si la
+    intención tiene plantilla, esa es la respuesta: el modelo no puede alargarla, volcar
+    campos internos ni hablar de cuotas en una compra al contado. Solo cuando no hay
+    plantilla se usa el texto del modelo, y únicamente si pasa el control de calidad.
+    """
     intent = AgentIntent(state["intent"])
     context = {
         "tool_results": state.get("tool_results", []),
@@ -151,8 +155,23 @@ def generate_answer(state: dict[str, Any], config: dict[str, Any]) -> dict[str, 
         "planner_args": state.get("planner_args", {}),
         "pending_commitment_fields": state.get("pending_commitment_fields"),
     }
-    answer = brain.answer(intent, context)
-    return {"final_answer": answer, "messages": [{"role": "assistant", "content": answer}]}
+    structured = presentation.build_answer(intent, context)
+
+    if structured.verdict != "unavailable":
+        answer = presentation.render(structured)
+    else:
+        free_text = (
+            state.get("final_answer", "")
+            if state.get("agentic_done")
+            else _brain(config).answer(intent, context)
+        )
+        answer = free_text if presentation.is_presentable(free_text) else structured.headline
+
+    return {
+        "final_answer": answer,
+        "structured_answer": structured.model_dump(mode="json"),
+        "messages": [{"role": "assistant", "content": answer}],
+    }
 
 
 def verify_results(state: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
@@ -170,6 +189,9 @@ def verify_results(state: dict[str, Any], config: dict[str, Any]) -> dict[str, A
         "verifier_ok": False,
         "errors": reasons,
         "final_answer": safe,
+        "structured_answer": StructuredAnswer(verdict="unavailable", headline=safe).model_dump(
+            mode="json"
+        ),
         "pending_action": None,
         "approval_required": False,
         "pending_commitment_fields": None,
@@ -193,6 +215,9 @@ def apply_write(state: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]
 
     return {
         "final_answer": answer,
+        "structured_answer": StructuredAnswer(verdict="info", headline=answer).model_dump(
+            mode="json"
+        ),
         "approval_required": False,
         "pending_action": None,
         "pending_commitment_fields": None,
