@@ -2,13 +2,14 @@ import { useState } from 'react'
 
 import Icon from './Icon'
 import AIUsageNotice from './AIUsageNotice'
-import { AI_USAGE_KINDS, getAIUsage } from '../services/aiUsage'
+import { getAIUsage } from '../services/aiUsage'
 import {
   ApiError,
   approveCopilotAction,
   chatCopilot,
   rejectCopilotAction,
 } from '../services/api'
+import { categoryLabel } from '../services/categories'
 import { formatDate } from '../services/format'
 
 // Ejemplos de arranque. Cada uno cae en una intención que el backend ya resuelve
@@ -34,8 +35,9 @@ export default function CopilotPanel({ onActionApplied }) {
   const [thinking, setThinking] = useState(false)
   const [pending, setPending] = useState(null) // { conversationId, action, tools, evidence }
   const [error, setError] = useState(null)
-  // Cuánta cuota diaria queda. La informa el backend en cada respuesta; acá solo se muestra.
-  const [usage, setUsage] = useState(() => getAIUsage(AI_USAGE_KINDS.copilotChat))
+  // Cuántas consultas inteligentes quedan hoy. Es una sola cuota compartida con el resto
+  // de la IA; la informa el backend en cada respuesta y acá solo se muestra.
+  const [usage, setUsage] = useState(() => getAIUsage())
   const chatLocked = Boolean(pending)
 
   function pushMessage(role, content) {
@@ -67,7 +69,7 @@ export default function CopilotPanel({ onActionApplied }) {
       setError(err instanceof ApiError ? err.message : 'El copiloto no está disponible.')
     } finally {
       // También después de un error: un 429 o un fallo del modelo cambian lo que queda.
-      setUsage(getAIUsage(AI_USAGE_KINDS.copilotChat))
+      setUsage(getAIUsage())
       setThinking(false)
     }
   }
@@ -177,6 +179,13 @@ export default function CopilotPanel({ onActionApplied }) {
           <p>
             <strong>Requiere tu aprobación:</strong> {pending.action.summary}
           </p>
+          {/* La categoría ya viene resuelta en el borrador (reglas del backend, sin otra
+              llamada al modelo). Se muestra para que se pueda revisar antes de aprobar. */}
+          {pending.action.draft?.category && (
+            <p className="copilot__pending-field">
+              Categoría: <strong>{categoryLabel(pending.action.draft.category)}</strong>
+            </p>
+          )}
           <div className="form__actions">
             <button type="button" className="btn btn--ghost btn--small" onClick={() => resolvePending(false)} disabled={thinking}>
               Rechazar

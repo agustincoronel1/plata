@@ -135,10 +135,12 @@ def test_confirm_crea_movimiento_y_actualiza_saldo(
 def test_confirm_con_correcciones(db_session: Session, make_profile: Callable[..., dict]) -> None:
     make_profile()
     store = InMemoryDraftStore()
-    resp = _parse(store, "Gasté 5 lucas")  # sin categoría -> no confirmable tal cual
+    # Sin pistas en el texto, el gasto queda en "otros"; la corrección humana manda.
+    resp = _parse(store, "Gasté 5 lucas")
+    assert resp.transaction.category == "otros"
 
     corrections = TransactionCorrections(
-        category="varios", occurred_on=date.today() - timedelta(days=1)
+        category="ocio", occurred_on=date.today() - timedelta(days=1)
     )
     result = svc.confirm_transaction(
         db_session,
@@ -147,5 +149,5 @@ def test_confirm_con_correcciones(db_session: Session, make_profile: Callable[..
         TransactionConfirmRequest(confirmed=True, corrections=corrections),
         user_id=TEST_USER_ID,
     )
-    assert result.transaction.category == "varios"
+    assert result.transaction.category == "ocio"
     assert "category" in result.corrected_fields

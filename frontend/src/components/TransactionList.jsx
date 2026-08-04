@@ -1,5 +1,6 @@
 import EmptyState from './EmptyState'
 import Icon from './Icon'
+import { categoryLabel } from '../services/categories'
 import { formatDate, formatMoney } from '../services/format'
 
 /**
@@ -46,7 +47,7 @@ export default function TransactionList({
             </span>
 
             <div className="row__body">
-              <p className="row__title">{tx.category}</p>
+              <p className="row__title">{categoryLabel(tx.category)}</p>
               <p className="row__meta">
                 {isIncome ? 'Ingreso' : 'Gasto'} · {formatDate(tx.occurred_on)}
                 {detail && ` · ${detail}`}

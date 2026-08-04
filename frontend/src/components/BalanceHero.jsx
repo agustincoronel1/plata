@@ -2,8 +2,9 @@ import Icon from './Icon'
 import { formatMoney } from '../services/format'
 
 /**
- * Bloque principal del dashboard: el dinero disponible para usar y, debajo, el margen
- * diario. Todos los números llegan calculados del backend; acá no se hace ninguna cuenta.
+ * Bloque principal del dashboard: el dinero disponible para usar, el saldo del que sale y
+ * el margen diario. Todos los números llegan calculados del backend; acá no se hace
+ * ninguna cuenta.
  *
  * Reglas de presentación honesta (se mantienen tal cual):
  * - Déficit (available_real < 0): muestra $0 y cuánto falta, sin culpabilizar.
@@ -29,7 +30,9 @@ export default function BalanceHero({ summary, onOpenDetail }) {
   if (inDeficit) {
     note = `Tus compromisos y reservas superan tu saldo por ${formatMoney(summary.deficit_amount)}.`
   } else if (summary) {
-    note = 'Ya descontamos tus compromisos, el dinero protegido y tu margen de seguridad.'
+    // Qué significa el número grande, en una sola línea: ya tiene descontados los
+    // compromisos, el dinero protegido y el margen de seguridad.
+    note = `Podés gastar ${formatMoney(spendable)} sin comprometer tus gastos fijos.`
   }
 
   let dailyNote = null
@@ -37,8 +40,8 @@ export default function BalanceHero({ summary, onOpenDetail }) {
     const days = summary.days_until_income
     dailyNote =
       days && days > 1
-        ? `Este es tu margen por día hasta tu próximo ingreso (en ${days} días).`
-        : 'Este es tu margen disponible hasta tu próximo ingreso.'
+        ? `Margen por día hasta tu próximo ingreso (en ${days} días).`
+        : 'Margen disponible hasta tu próximo ingreso.'
   } else if (summary?.warnings?.length) {
     // Sin monto diario confiable: se muestra el primer aviso determinístico del backend.
     dailyNote = summary.warnings[0]
@@ -59,6 +62,16 @@ export default function BalanceHero({ summary, onOpenDetail }) {
       </div>
 
       <p className="hero__value">{formatMoney(spendable)}</p>
+
+      {/* El saldo sigue siendo protagonista, pero acompaña al disponible en vez de ocupar
+          una tarjeta aparte: es el número del que sale todo lo demás. */}
+      {summary && (
+        <p className="hero__balance">
+          <span className="hero__balance-label">Saldo actual</span>
+          <span className="hero__balance-value">{formatMoney(summary.current_balance)}</span>
+        </p>
+      )}
+
       <p className="hero__note">{note}</p>
 
       <div className="hero__daily">

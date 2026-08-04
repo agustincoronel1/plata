@@ -31,7 +31,10 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
         "Los compromisos considerados son los `pending` con vencimiento hasta el horizonte, "
         "incluidos los vencidos que siguen pendientes. `current_balance` ya refleja los "
         "movimientos históricos: no se recalcula. La proyección de fin de mes usa solo "
-        "ingresos y compromisos cargados, no estima gastos variables."
+        "ingresos y compromisos cargados, no estima gastos variables.\n\n"
+        "Incluye además la actividad del mes calendario en curso: ingresos, gastos, ahorro "
+        "(ingresos - gastos), gastos del mes anterior y `category_summary`, el gasto por "
+        "categoría (top 5 y el resto agrupado en `otros`, de mayor a menor, con porcentaje)."
     ),
 )
 def get_dashboard_summary(

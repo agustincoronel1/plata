@@ -15,7 +15,7 @@
   }
 
   .hero {
-    padding: var(--space-5) var(--space-4);
+    padding: var(--space-4) var(--space-4);
   }
 
   /* En 320px el saldo sigue siendo lo más grande de la pantalla, pero entra entero
@@ -32,6 +32,19 @@
      que garantiza que el monto se lea entero y con jerarquía. */
   .metrics {
     grid-template-columns: 1fr;
+  }
+
+  /**
+   * La variante compacta también baja a una columna, pero cada métrica pasa a una línea
+   * (etiqueta a la izquierda, importe a la derecha): tres filas bajas en vez de tres
+   * tarjetas altas, sin recortar el importe ni generar scroll horizontal.
+   */
+  .metrics--compact .metric {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
   }
 
   .modal {
@@ -134,7 +147,19 @@
   }
 
   .hero {
-    padding: var(--space-7) var(--space-6);
+    padding: var(--space-6) var(--space-5);
+  }
+
+  /* La torta y su leyenda conviven en una fila desde tablet. */
+  .donut {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-5);
+  }
+
+  .donut__legend {
+    width: auto;
+    flex: 1 1 auto;
   }
 }
 
@@ -215,6 +240,6 @@
  */
 @media (width >= 80rem) {
   .hero__value {
-    font-size: clamp(2.5rem, 5vw, 4.5rem);
+    font-size: clamp(2.5rem, 5vw, 3.5rem);
   }
 }

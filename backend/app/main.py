@@ -82,10 +82,10 @@ def handle_ai_error(request: Request, exc: AIError) -> JSONResponse:
 
 @app.exception_handler(AIDailyLimitReachedError)
 def handle_ai_daily_limit(request: Request, exc: AIDailyLimitReachedError) -> JSONResponse:
-    """Cuota diaria de IA agotada: 429 con todo lo que hace falta para explicarlo.
+    """Cuota diaria de consultas inteligentes agotada: 429 con todo lo necesario.
 
     El `detail` es un objeto y no un string porque el frontend necesita más que el texto:
-    qué operación se agotó, cuándo se renueva y un `code` estable.
+    el límite, cuánto se usó, cuándo se renueva, en qué zona y un `code` estable.
 
     Va aparte del manejador de `AIError` aunque sea una subclase: Starlette elige el más
     específico, así que el resto de los errores de IA siguen respondiendo igual.
@@ -97,11 +97,14 @@ def handle_ai_daily_limit(request: Request, exc: AIDailyLimitReachedError) -> JS
     if usage is not None:
         detail.update(
             {
-                "kind": str(usage.kind),
                 "limit": usage.limit,
                 "used": usage.used,
                 "remaining": usage.remaining,
+                # Mismo instante con los dos nombres: `resets_at` es el que ya leía el
+                # frontend, `reset_at` el del contrato de la cuota.
                 "resets_at": usage.resets_at.isoformat(),
+                "reset_at": usage.resets_at.isoformat(),
+                "timezone": usage.timezone,
             }
         )
         headers["Retry-After"] = str(usage.retry_after_seconds)

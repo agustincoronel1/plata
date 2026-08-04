@@ -21,8 +21,35 @@ en cuotas). Organiza y simula; no da asesoramiento financiero.
   sin la compra, y comparado con empezar un mes más tarde.
 - **Copiloto financiero.** Preguntas sobre tus propios datos ("¿qué pagos tengo antes de
   cobrar?"), respondidas con evidencia y sin que el modelo toque el dinero.
+- **En qué se fue tu plata.** Cada gasto queda categorizado y el dashboard muestra el mes
+  en curso por categoría, en una torta con montos y porcentajes.
 
 ## Cómo está construido
+
+### Las categorías las resuelven reglas, no la IA
+
+Un gasto pertenece siempre a una de estas diez categorías: `comida`, `transporte`,
+`vivienda`, `servicios`, `salud`, `suscripciones`, `compras`, `ocio`, `educación`, `otros`.
+Los ingresos conservan su categoría de texto libre.
+
+`app/services/categorizer.py` es el único lugar donde se decide, y no llama a ningún
+modelo: normaliza el texto (minúsculas, sin acentos) y busca palabras clave ("nafta" o
+"combustible" → `transporte`, "supermercado" o "pedidosya" → `comida`). El orden es
+siempre el mismo:
+
+1. la categoría que eligió la persona, si está en la lista;
+2. las reglas, sobre la categoría escrita, la descripción y el texto original;
+3. `otros`, si nada coincide.
+
+Vale para el alta manual, para "Escribilo con IA" y para el copiloto: los tres terminan en
+`TransactionCreate`, que deja la categoría resuelta antes de guardar. El formulario propone
+la categoría mientras se escribe la descripción y se puede cambiar siempre.
+
+`GET /api/v1/dashboard/summary` agrega, además del disponible, la actividad del mes
+calendario en curso: `month_income_total`, `month_expenses_total`, `month_savings`,
+`previous_month_expenses_total` y `category_summary` (solo gastos, top 5 y el resto
+agrupado en `otros`, de mayor a menor, con monto y porcentaje). El agrupamiento lo hace
+PostgreSQL en una única consulta `GROUP BY`.
 
 ### El dinero no lo calcula la IA
 
@@ -197,7 +224,7 @@ llamar al modelo en el caso de los de IA.
 | GET · PUT | `/profile` | Perfil financiero. El `GET` responde 404 hasta el onboarding. |
 | GET · POST · PATCH · DELETE | `/transactions` | Movimientos. Ajustan el saldo. |
 | GET · POST · PATCH · DELETE | `/commitments` | Compromisos. No tocan el saldo. |
-| GET | `/dashboard/summary` | Disponible, diario y proyección de fin de mes. |
+| GET | `/dashboard/summary` | Disponible, diario, proyección de fin de mes y gasto del mes por categoría. |
 | POST | `/simulations/purchase` | Simula una compra en cuotas y la persiste. |
 | GET | `/simulations` | Las 10 simulaciones más recientes. |
 | POST | `/ai/transactions/parse` | Interpreta texto y devuelve un borrador. No persiste. |
@@ -215,12 +242,17 @@ anterior y aplica el nuevo, borrar revierte. Todo en un único commit, con el pe
 bloqueado con `SELECT ... FOR UPDATE`. Los compromisos, en cambio, nunca modifican el
 saldo: marcarlos como pagados es solo un cambio de estado.
 
-## Límites diarios de IA
+## Límite diario de consultas inteligentes
 
-Cada llamada al modelo cuesta plata, así que las dos operaciones que invocan al proveedor
-tienen cuota diaria por cuenta: 20 consultas al copiloto y 10 interpretaciones. Al agotarla
-responden 429 con un mensaje ya pensado para el usuario; el resto de la aplicación (el
-formulario manual, el dashboard, los compromisos) no tiene límite porque no cuesta nada.
+Cada llamada al modelo cuesta plata, así que hay **una** cuota diaria por cuenta —10 por
+defecto, configurable con `AI_DAILY_LIMIT`— compartida por todos los canales de IA: el
+copiloto, la interpretación de movimientos y, cuando exista, WhatsApp. Un canal nuevo
+consume del mismo contador con solo pasar el UUID del usuario autenticado a
+`ai_usage_service.daily_quota`.
+
+Al agotarla, la API responde 429 con un mensaje ya pensado para el usuario; el resto de la
+aplicación (el formulario manual, el dashboard, los compromisos, las simulaciones) no tiene
+límite porque no cuesta nada.
 
 Reservar un uso es una sola sentencia:
 
@@ -234,16 +266,37 @@ RETURNING used
 
 Si el `WHERE` no se cumple, PostgreSQL no devuelve fila: eso *es* el límite alcanzado. Sin
 lectura previa no existe la ventana entre consultar y reservar por la que se colarían las
-llamadas concurrentes. El día corta a las 00:00 de Argentina, no en UTC.
+llamadas concurrentes, y como PostgreSQL serializa la fila, varias instancias del backend
+comparten el contador sin coordinarse. El día corta a las 00:00 de Argentina
+(`AI_USAGE_TIMEZONE`), no en UTC.
+
+La columna `kind` es herencia del diseño anterior, que tenía una cuota por operación: hoy
+guarda siempre el mismo valor, así que la clave lógica es (usuario, día) y no puede haber
+dos registros de la misma cuenta para la misma fecha.
 
 Solo se cobra lo que llega al proveedor. Un 422, un 409 por acción pendiente, confirmar un
 borrador o consultar la cuota no gastan nada; un 503 devuelve la reserva. Un 502 por
 respuesta inválida del modelo sí gasta, porque la llamada ya se facturó.
 
-La cuota restante vuelve en un campo `usage` de la respuesta y en cabeceras
-(`X-AI-Daily-*`), que es el único lugar donde puede viajar en el 429. Desde 3 usos
-restantes la interfaz avisa sin interrumpir. El frontend nunca calcula la cuota por su
-cuenta.
+La cuota restante vuelve en un campo `usage` de la respuesta (`limit`, `used`, `remaining`,
+`reset_at`/`resets_at`, `timezone`) y en cabeceras `X-AI-Daily-*`, que es el único lugar
+donde puede viajar en el 429. Desde 3 usos restantes la interfaz avisa sin interrumpir. El
+frontend nunca calcula la cuota por su cuenta.
+
+## Arranque del backend (Render, plan gratuito)
+
+Con el servicio dormido, la primera petición tarda cerca de un minuto. Antes eso se veía
+como "No pudimos conectar con el servidor", que describe mal lo que pasa.
+
+`BackendStatusProvider` sondea `/health` al abrir la aplicación —mientras la persona todavía
+está en el login, así Render va despertando— y `BackendGate` no monta el dashboard hasta que
+responda: nunca salen las cinco consultas iniciales contra un servidor que está arrancando.
+Un timeout, una red caída o un 502/503/504 se reintentan con espera creciente durante unos
+75 segundos, mostrando el estado y un botón de reintento; cuando `/health` responde 200 la
+información se carga sola, sin recargar la página.
+
+Lo que **no** pasa por ahí: un 401 es sesión vencida y lo resuelve el flujo de siempre, un
+429 muestra el límite diario y un 500 conserva su error genérico.
 
 ## Tests y calidad
 
@@ -310,7 +363,8 @@ Git. Las variables están documentadas en los dos `.env.example`. Las más relev
 | `AI_API_KEY` | vacía | Solo con proveedor real. Nunca se loguea ni se devuelve. |
 | `AI_EMBEDDING_PROVIDER` | `mock` | Embeddings del RAG. |
 | `AI_DRAFT_STORE` · `AI_CHECKPOINT_STORE` | `postgres` | `memory` para desarrollo sin base. |
-| `AI_DAILY_CHAT_LIMIT` · `AI_DAILY_PARSE_LIMIT` | `20` · `10` | Cuota diaria por cuenta. |
+| `AI_DAILY_LIMIT` | `10` | Consultas inteligentes por cuenta y por día, para toda la IA. |
+| `AI_USAGE_TIMEZONE` | `America/Argentina/Buenos_Aires` | Zona del corte diario del contador. |
 | `AI_LOG_CONTENT` | `false` | Loguear contenido. Solo para depuración local. |
 | `SUPABASE_JWKS_URL` · `_ISSUER` · `_AUDIENCE` | — | Verificación del token. No son secretos. |
 

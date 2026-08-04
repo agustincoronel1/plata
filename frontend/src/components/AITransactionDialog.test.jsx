@@ -45,6 +45,28 @@ describe('AITransactionDialog', () => {
     expect(screen.getByDisplayValue('25000.00')).toBeInTheDocument()
   })
 
+  it('muestra la categoría que resolvió el backend y deja cambiarla', async () => {
+    api.parseAITransaction.mockResolvedValue(makeParseDraft())
+    api.confirmAITransaction.mockResolvedValue({ draft_id: 'x', transaction: { id: 't1' } })
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.type(screen.getByLabelText(/Cont/i), 'Gasté 25 lucas ayer en nafta')
+    await user.click(screen.getByRole('button', { name: /Interpretar/i }))
+
+    const categoria = await screen.findByLabelText(/Categoría/i)
+    expect(categoria.tagName).toBe('SELECT')
+    expect(categoria).toHaveValue('transporte')
+
+    await user.selectOptions(categoria, 'ocio')
+    await user.click(screen.getByRole('button', { name: /Confirmar y registrar/i }))
+
+    expect(api.confirmAITransaction).toHaveBeenCalledWith(
+      '99999999-9999-4999-8999-999999999999',
+      { corrections: { category: 'ocio' } },
+    )
+  })
+
   it('confirma el borrador y avisa al padre', async () => {
     api.parseAITransaction.mockResolvedValue(makeParseDraft())
     api.confirmAITransaction.mockResolvedValue({ draft_id: 'x', transaction: { id: 't1' } })

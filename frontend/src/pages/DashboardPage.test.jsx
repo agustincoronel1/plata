@@ -110,13 +110,18 @@ describe('DashboardPage', () => {
     })
     api.getTransactions.mockResolvedValueOnce([]).mockResolvedValueOnce([nuevaTx])
     api.createTransaction.mockResolvedValue(nuevaTx)
+    // El bloque principal muestra el saldo del resumen, que se vuelve a pedir después de
+    // crear el movimiento.
+    api.getDashboardSummary
+      .mockResolvedValueOnce(SUMMARY)
+      .mockResolvedValue({ ...SUMMARY, current_balance: '600000.00' })
 
     render(<DashboardPage />)
     await ready()
 
     await userEvent.click(screen.getByRole('button', { name: /Registrar movimiento/i }))
     await userEvent.type(screen.getByLabelText(/Monto/i), '20000')
-    await userEvent.type(screen.getByLabelText(/Categoría/i), 'comida')
+    await userEvent.selectOptions(screen.getByLabelText(/Categoría/i), 'comida')
     await userEvent.click(screen.getByRole('button', { name: /Guardar movimiento/i }))
 
     // El saldo pasa a 600.000 (tarjeta) y el movimiento aparece en la lista.
@@ -139,7 +144,7 @@ describe('DashboardPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Registrar movimiento/i }))
     await userEvent.type(screen.getByLabelText(/Monto/i), '0')
-    await userEvent.type(screen.getByLabelText(/Categoría/i), 'comida')
+    await userEvent.selectOptions(screen.getByLabelText(/Categoría/i), 'comida')
     await userEvent.click(screen.getByRole('button', { name: /Guardar movimiento/i }))
 
     expect(await screen.findByText(/Revisá los datos del formulario/i)).toBeInTheDocument()

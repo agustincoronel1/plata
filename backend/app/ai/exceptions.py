@@ -76,21 +76,22 @@ class AIDraftValidationError(AIError):
 # texto, que puede cambiar. Es lo único de la respuesta que no está pensado para leerse.
 DAILY_LIMIT_CODE = "daily_ai_limit_reached"
 
-# Un mensaje por operación: "el copiloto" y "las interpretaciones" no son lo mismo para
-# quien lo lee, y decir cuál se agotó evita que parezca que Plata entera dejó de funcionar.
-DAILY_LIMIT_MESSAGES = {
-    "copilot_chat": (
-        "Alcanzaste el límite diario del copiloto. Vas a poder volver a usarlo mañana."
-    ),
-    "transaction_parse": (
-        "Alcanzaste el límite diario de interpretaciones con IA. "
-        "Vas a poder volver a usarla mañana."
-    ),
-}
+
+def daily_limit_message(limit: int) -> str:
+    """Texto del límite agotado, con el número real configurado.
+
+    Un solo mensaje porque ahora hay una sola cuota, compartida por todos los canales. Dice
+    qué se puede seguir haciendo —todo lo manual— para que no parezca que Plata entera dejó
+    de funcionar.
+    """
+    return (
+        f"Llegaste al límite de {limit} consultas inteligentes por hoy. Podés seguir usando "
+        "las funciones manuales de Plata y volver a consultar mañana."
+    )
 
 
 class AIDailyLimitReachedError(AIError):
-    """La cuenta agotó su cuota diaria de esta operación de IA.
+    """La cuenta agotó su cuota diaria de consultas inteligentes.
 
     429 y no 403: el problema no es de permisos, es de cantidad, y se resuelve solo cuando
     cambia el día.
@@ -102,14 +103,14 @@ class AIDailyLimitReachedError(AIError):
 
     status_code = 429
     default_detail = (
-        "Llegaste al límite de uso de IA por hoy. Vuelve a estar disponible mañana; "
-        "mientras tanto podés seguir usando Plata con el formulario manual."
+        "Llegaste al límite de consultas inteligentes por hoy. Podés seguir usando las "
+        "funciones manuales de Plata y volver a consultar mañana."
     )
 
     def __init__(self, usage: object | None = None, detail: str | None = None) -> None:
         self.usage = usage
-        kind = getattr(usage, "kind", None)
-        message = detail or DAILY_LIMIT_MESSAGES.get(str(kind)) if kind else detail
+        limit = getattr(usage, "limit", None)
+        message = detail or (daily_limit_message(limit) if isinstance(limit, int) else None)
         super().__init__(message)
 
 

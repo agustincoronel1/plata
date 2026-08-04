@@ -13,10 +13,9 @@ from datetime import date
 
 from app.ai.agent.brain import MockAgentBrain
 from app.ai.agent.schemas import AgentIntent
-from app.ai.evaluators._common import Metric, load_jsonl, print_report
+from app.ai.evaluators._common import EVAL_USER_ID, Metric, load_jsonl, print_report
 from app.ai.gateway import AIGateway, build_provider
 from app.core.config import Settings
-from app.core.constants import DEMO_USER_ID
 from app.services import ai_transaction_service as svc
 from app.services.draft_store import InMemoryDraftStore
 
@@ -34,7 +33,7 @@ def run() -> int:
     for row in load_jsonl(DATASET):
         classify = brain.classify(row["input"], [])
         parsed = svc.parse_transaction(
-            gateway, InMemoryDraftStore(), row["input"], as_of=AS_OF, user_id=DEMO_USER_ID
+            gateway, InMemoryDraftStore(), row["input"], as_of=AS_OF, user_id=EVAL_USER_ID
         )
         blocked = classify["intent"] == AgentIntent.UNKNOWN and not parsed.is_confirmable
 

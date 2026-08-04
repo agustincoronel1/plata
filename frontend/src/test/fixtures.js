@@ -31,6 +31,16 @@ export const SUMMARY = {
   next_income_date: '2026-08-01',
   status: 'healthy',
   warnings: [],
+  // Actividad del mes: ingresos, gastos, ahorro y gasto por categoría (top 5 + "otros").
+  month_income_total: '1200000.00',
+  month_expenses_total: '70000.00',
+  month_savings: '1130000.00',
+  previous_month_expenses_total: '100000.00',
+  category_summary: [
+    { category: 'transporte', amount: '35000.00', percentage: '50.0' },
+    { category: 'comida', amount: '21000.00', percentage: '30.0' },
+    { category: 'otros', amount: '14000.00', percentage: '20.0' },
+  ],
   forecast: {
     month_end: '2026-07-31',
     income_before_month_end: '0.00',

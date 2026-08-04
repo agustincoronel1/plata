@@ -8,11 +8,17 @@ GET /api/v1/dashboard/summary, que calcula con el motor financiero determinísti
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from decimal import Decimal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.common import Money
+
+# Porcentaje sobre el total de gastos del mes: Decimal (nunca float), 0–100 con un decimal.
+Percentage = Annotated[Decimal, Field(ge=0, le=100, max_digits=4, decimal_places=1)]
+
+ZERO_MONEY = Decimal("0.00")
 
 # Estados del resumen:
 # - healthy:    disponible real > 0 y hay fecha de ingreso válida.
@@ -33,6 +39,16 @@ class MonthEndForecastResponse(BaseModel):
     projected_month_end_balance: Money
     projected_month_end_margin: Money
     note: str
+
+
+class CategorySummaryItem(BaseModel):
+    """Cuánto se gastó en una categoría durante el mes, y qué parte del total representa."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    category: str
+    amount: Money
+    percentage: Percentage
 
 
 class DashboardSummaryResponse(BaseModel):
@@ -66,3 +82,15 @@ class DashboardSummaryResponse(BaseModel):
     status: DashboardStatus
     warnings: list[str]
     forecast: MonthEndForecastResponse
+
+    # --- Actividad del mes en curso (agregado, solo lectura) ---
+    #
+    # Campos agregados después del contrato original: todos tienen valor por defecto, así
+    # que un consumidor que no los conoce sigue funcionando igual. `month_savings` puede ser
+    # negativo (se gastó más de lo que entró). `category_summary` incluye SOLO gastos: las
+    # cinco categorías con más gasto y el resto agrupado en "otros", de mayor a menor.
+    month_income_total: Money = ZERO_MONEY
+    month_expenses_total: Money = ZERO_MONEY
+    month_savings: Money = ZERO_MONEY
+    previous_month_expenses_total: Money = ZERO_MONEY
+    category_summary: list[CategorySummaryItem] = Field(default_factory=list)

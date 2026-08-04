@@ -12,9 +12,10 @@ no se gasta una llamada a OpenAI, no se crea ningún borrador y no se toca la ba
 dueño del borrador es siempre `current_user.id`; nunca llega por body, query, path ni
 header, y el modelo tampoco puede proponerlo.
 
-`parse` es la única de las tres que llama al modelo, así que es la única con cuota
-diaria. Confirmar y rechazar solo tocan PostgreSQL: no cuestan plata y no se limitan,
-porque dejar a alguien sin poder confirmar un borrador que ya pagó sería absurdo.
+`parse` es la única de las tres que llama al modelo, así que es la única que descuenta de
+la cuota diaria de consultas inteligentes (la misma que usa el copiloto). Confirmar y
+rechazar solo tocan PostgreSQL: no cuestan plata y no se limitan, porque dejar a alguien
+sin poder confirmar un borrador que ya pagó sería absurdo.
 """
 
 from typing import Annotated
@@ -34,7 +35,6 @@ from app.schemas.ai_transaction import (
     TransactionParseResponse,
 )
 from app.services import ai_transaction_service, ai_usage_service
-from app.services.ai_usage_service import AIUsageKind
 from app.services.draft_store import DraftStore, get_draft_store
 
 router = APIRouter(prefix="/ai/transactions", tags=["ai-transactions"])
@@ -61,7 +61,7 @@ def parse_transaction(
 ) -> TransactionParseResponse:
     # La cuota se reserva acá, después de que FastAPI validó el cuerpo (un 422 no
     # gasta) y justo antes de la única llamada al modelo de este endpoint.
-    with ai_usage_service.daily_quota(db, current_user.id, AIUsageKind.TRANSACTION_PARSE) as quota:
+    with ai_usage_service.daily_quota(db, current_user.id) as quota:
         quota.consume()
         parsed = ai_transaction_service.parse_transaction(
             gateway, store, payload.text, user_id=current_user.id

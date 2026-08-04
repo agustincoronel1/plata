@@ -14,7 +14,7 @@ from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.constants import DEMO_USER_ID
+from app.ai.evaluators._common import EVAL_USER_ID
 from app.core.database import engine
 from app.models import UserProfile
 from app.schemas.commitment import CommitmentCreate
@@ -24,8 +24,8 @@ from app.services import commitment_service, transaction_service
 SEED_TX = [
     ("transporte", "12000", "carga de nafta"),
     ("transporte", "15000", "nafta ruta"),
-    ("gastronomía", "8000", "cafe con leche"),
-    ("supermercado", "42000", "compra semanal super"),
+    ("comida", "8000", "cafe con leche"),
+    ("comida", "42000", "compra semanal super"),
     ("servicios", "60000", "pago de gas"),
 ]
 
@@ -44,13 +44,13 @@ def seeded_session():
     connection = engine.connect()
     transaction = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
-    existing = session.get(UserProfile, DEMO_USER_ID)
+    existing = session.get(UserProfile, EVAL_USER_ID)
     if existing is not None:
         session.delete(existing)
         session.flush()
     session.add(
         UserProfile(
-            id=DEMO_USER_ID,
+            id=EVAL_USER_ID,
             name="Demo",
             current_balance=Decimal("600000"),
             next_income_amount=Decimal("1200000"),
@@ -63,7 +63,7 @@ def seeded_session():
     for category, amount, desc in SEED_TX:
         transaction_service.create_transaction(
             session,
-            DEMO_USER_ID,
+            EVAL_USER_ID,
             TransactionCreate(
                 type="expense",
                 amount=Decimal(amount),
@@ -74,7 +74,7 @@ def seeded_session():
         )
     commitment_service.create_commitment(
         session,
-        DEMO_USER_ID,
+        EVAL_USER_ID,
         CommitmentCreate(
             name="Alquiler",
             amount=Decimal("300000"),

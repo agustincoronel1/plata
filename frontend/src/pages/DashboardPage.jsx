@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { useBackendStatus } from '../backend/BackendStatusContext'
 import AITransactionDialog from '../components/AITransactionDialog'
 import ApiStatus from '../components/ApiStatus'
 import AppShell from '../components/AppShell'
 import BalanceHero from '../components/BalanceHero'
 import BrandMark from '../components/BrandMark'
+import CategoryChart from '../components/CategoryChart'
 import CommitmentForm from '../components/CommitmentForm'
 import CopilotDock from '../components/CopilotDock'
 import CopilotPanel from '../components/CopilotPanel'
@@ -41,6 +43,7 @@ import {
   updateTransaction,
 } from '../services/api'
 import { daysUntilLabel, formatMoney } from '../services/format'
+import { buildMonthInsight } from '../services/insights'
 import '../styles/dashboard.css'
 
 function errorFeedback(error, fallback) {
@@ -66,6 +69,10 @@ const FOOTER = (
  * montar el dashboard aislado en un test), no se dibuja y el resto funciona igual.
  */
 export default function DashboardPage({ onSignOut }) {
+  // Si el backend deja de responder mientras la aplicación está abierta, se le avisa a
+  // quien lleva la cuenta de la disponibilidad en vez de resolverlo acá: el ciclo de
+  // reintentos y el mensaje de arranque viven en un solo lugar.
+  const { reportUnavailable } = useBackendStatus()
   const [status, setStatus] = useState('loading')
   const [profile, setProfile] = useState(null)
   const [transactions, setTransactions] = useState([])
@@ -114,12 +121,15 @@ export default function DashboardPage({ onSignOut }) {
     const error = profileResult.reason
     if (error instanceof ApiError && error.status === 404) {
       setStatus('setup')
-    } else if (error instanceof ApiError && error.isOffline) {
+    } else if (error instanceof ApiError && (error.isOffline || error.timeout)) {
+      // Sin conexión o petición vencida: puede ser que Render se haya vuelto a dormir.
+      // Un 401 (sesión), un 429 (límite diario) o un 500 (error real) NO pasan por acá.
       setStatus('offline')
+      reportUnavailable()
     } else {
       setStatus('error')
     }
-  }, [])
+  }, [reportUnavailable])
 
   useEffect(() => {
     load()
@@ -293,6 +303,10 @@ export default function DashboardPage({ onSignOut }) {
     }
   }
 
+  // Conclusión breve del mes (gastos vs. mes anterior + categoría principal). Es una
+  // lectura de datos ya calculados: no hay cuentas nuevas ni IA.
+  const monthInsight = buildMonthInsight(summary)
+
   // Los diálogos son los mismos en cualquier estado de la pantalla: se arman una sola vez.
   const overlays = (
     <>
@@ -444,6 +458,14 @@ export default function DashboardPage({ onSignOut }) {
         <div className="dashboard__main">
           <BalanceHero summary={summary} onOpenDetail={() => goToSection('situacion')} />
 
+          {/* Ingresos, gastos y ahorro del mes: una fila compacta, con los valores que ya
+              vienen calculados en el resumen. */}
+          <ul className="metrics metrics--compact" aria-label="Tu mes">
+            <MetricCard label="Ingresos" value={formatMoney(summary?.month_income_total)} />
+            <MetricCard label="Gastos" value={formatMoney(summary?.month_expenses_total)} />
+            <MetricCard label="Ahorro" value={formatMoney(summary?.month_savings)} />
+          </ul>
+
           <QuickActions
             onExpense={() => openNewTransaction('expense')}
             onIncome={() => openNewTransaction('income')}
@@ -452,10 +474,18 @@ export default function DashboardPage({ onSignOut }) {
           />
 
           <SectionCard
+            id="categorias"
+            title="En qué se fue tu plata"
+            titleId="categorias-title"
+            subtitle="Tus gastos de este mes, por categoría."
+          >
+            <CategoryChart items={summary?.category_summary} />
+          </SectionCard>
+
+          <SectionCard
             id="situacion"
             title="Tu situación"
             titleId="tu-situacion"
-            subtitle="Los datos con los que Plata calcula tu disponible."
             action={
               <button
                 type="button"
@@ -466,8 +496,11 @@ export default function DashboardPage({ onSignOut }) {
               </button>
             }
           >
-            <ul className="metrics">
-              <MetricCard label="Saldo actual" value={formatMoney(profile.current_balance)} />
+            {/* Conclusión en una línea, con datos reales del resumen. Si no alcanzan, no
+                se dice nada en vez de inventar una lectura. */}
+            {monthInsight && <p className="situation__insight">{monthInsight}</p>}
+
+            <ul className="metrics metrics--compact">
               <MetricCard
                 label="Compromisos"
                 value={formatMoney(summary?.pending_commitments_amount)}
@@ -481,7 +514,13 @@ export default function DashboardPage({ onSignOut }) {
                 value={daysUntilLabel(profile.next_income_date)}
               />
             </ul>
-            <FinancialBreakdown summary={summary} />
+
+            {/* El desglose completo queda a un clic: informa igual, pero no ocupa media
+                pantalla en la vista por defecto. */}
+            <details className="situation__detail">
+              <summary>Ver el detalle del cálculo</summary>
+              <FinancialBreakdown summary={summary} />
+            </details>
           </SectionCard>
 
           <SectionCard

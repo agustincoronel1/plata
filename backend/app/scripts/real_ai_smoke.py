@@ -39,10 +39,10 @@ from app.ai.agent.presentation import internal_leaks
 from app.ai.agent.tools import TOOLS, is_write_tool
 from app.ai.gateway import AIGateway, build_provider
 from app.core.config import settings
-from app.core.constants import DEMO_USER_ID
 from app.core.database import SessionLocal, engine
 from app.models import Transaction
 from app.schemas.transaction import TransactionCreate
+from app.scripts.seed_demo import DEMO_USER_ID
 from app.services import ai_chat_service, ai_transaction_service, transaction_service
 from app.services.ai_chat_service import _thread_id
 from app.services.draft_store import DraftStatus, get_draft_store

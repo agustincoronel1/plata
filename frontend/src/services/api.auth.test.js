@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AI_USAGE_KINDS, getAIUsage, resetAIUsage } from './aiUsage'
+import { getAIUsage, resetAIUsage } from './aiUsage'
 import {
   AI_LIMIT_MESSAGE,
   ApiError,
@@ -209,12 +209,15 @@ describe('respuesta 429 (cuota diaria de IA)', () => {
         {
           detail: {
             code: 'daily_ai_limit_reached',
-            message: 'Alcanzaste el límite diario del copiloto. Vas a poder volver a usarlo mañana.',
-            kind: 'copilot_chat',
-            limit: 20,
-            used: 20,
+            message:
+              'Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando ' +
+              'las funciones manuales de Plata y volver a consultar mañana.',
+            limit: 10,
+            used: 10,
             remaining: 0,
             resets_at: '2026-07-30T00:00:00-03:00',
+            reset_at: '2026-07-30T00:00:00-03:00',
+            timezone: 'America/Argentina/Buenos_Aires',
           },
         },
         { status: 429 },
@@ -224,14 +227,16 @@ describe('respuesta 429 (cuota diaria de IA)', () => {
     const error = await chatCopilot('hola').catch((failure) => failure)
 
     expect(error.message).toBe(
-      'Alcanzaste el límite diario del copiloto. Vas a poder volver a usarlo mañana.',
+      'Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando las ' +
+        'funciones manuales de Plata y volver a consultar mañana.',
     )
     // El objeto queda disponible para la UI, sin que cada componente vuelva a parsearlo.
     expect(error.detail).toMatchObject({
       code: 'daily_ai_limit_reached',
-      kind: 'copilot_chat',
+      limit: 10,
       remaining: 0,
-      resets_at: '2026-07-30T00:00:00-03:00',
+      reset_at: '2026-07-30T00:00:00-03:00',
+      timezone: 'America/Argentina/Buenos_Aires',
     })
   })
 })
@@ -278,19 +283,19 @@ describe('cuota diaria informada en las cabeceras', () => {
       headers: {
         get: (name) =>
           ({
-            'x-ai-daily-kind': 'copilot_chat',
-            'x-ai-daily-limit': '20',
+            'x-ai-daily-limit': '10',
             'x-ai-daily-remaining': '2',
             'x-ai-daily-warn-at': '3',
+            'x-ai-daily-reset-at': '2026-07-30T00:00:00-03:00',
           })[name.toLowerCase()] ?? null,
       },
     })
 
     await chatCopilot('hola')
 
-    expect(getAIUsage(AI_USAGE_KINDS.copilotChat)).toMatchObject({
+    expect(getAIUsage()).toMatchObject({
       remaining: 2,
-      limit: 20,
+      limit: 10,
       warning: true,
     })
   })
@@ -298,7 +303,7 @@ describe('cuota diaria informada en las cabeceras', () => {
   it('una respuesta sin cabeceras de cuota no registra nada', async () => {
     await getProfile()
 
-    expect(getAIUsage(AI_USAGE_KINDS.copilotChat)).toBeNull()
+    expect(getAIUsage()).toBeNull()
   })
 })
 

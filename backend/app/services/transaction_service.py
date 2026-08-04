@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Transaction, TransactionType, UserProfile
 from app.schemas.transaction import TransactionCreate, TransactionUpdate
+from app.services.categorizer import resolve_expense_category
 from app.services.exceptions import NotFoundError
 from app.services.profile_service import PROFILE_NOT_FOUND
 
@@ -134,6 +135,12 @@ def update_transaction(
     try:
         for field, value in changes.items():
             setattr(transaction, field, value)
+        # Un gasto editado vuelve a pasar por las reglas: una categoría válida se respeta y
+        # una fuera del vocabulario (o heredada del historial) se mapea al vocabulario fijo.
+        if transaction.type is TransactionType.EXPENSE:
+            transaction.category = resolve_expense_category(
+                transaction.category, transaction.description
+            )
         new_effect = _signed_effect(transaction.type, transaction.amount)
         profile.current_balance += new_effect - previous_effect
         session.flush()

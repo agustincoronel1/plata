@@ -5,8 +5,12 @@ from decimal import Decimal
 
 from fastapi.testclient import TestClient
 
-from app.core.constants import DEMO_USER_ID
-from tests.conftest import API, default_profile_payload, requires_postgres
+from tests.conftest import (
+    API,
+    TEST_USER_ID,
+    default_profile_payload,
+    requires_postgres,
+)
 
 pytestmark = requires_postgres
 
@@ -23,7 +27,7 @@ def test_put_profile_crea_perfil_y_responde_200(client: TestClient) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["id"] == str(DEMO_USER_ID)
+    assert body["id"] == str(TEST_USER_ID)
     assert body["name"] == "Agustín Demo"
     assert body["currency"] == "ARS"
     # El dinero viaja como string y conserva la precisión.
@@ -57,7 +61,7 @@ def test_put_profile_actualiza_perfil_existente(
     assert body["name"] == "Otro Nombre"
     # current_balance admite negativos.
     assert Decimal(body["current_balance"]) == Decimal("-1000.00")
-    assert body["id"] == str(DEMO_USER_ID)
+    assert body["id"] == str(TEST_USER_ID)
 
 
 def test_put_profile_rechaza_moneda_no_ars(client: TestClient) -> None:
@@ -73,4 +77,4 @@ def test_put_profile_ignora_id_del_cliente(client: TestClient) -> None:
     response = client.put(f"{API}/profile", json=payload)
 
     assert response.status_code == 200
-    assert response.json()["id"] == str(DEMO_USER_ID)
+    assert response.json()["id"] == str(TEST_USER_ID)

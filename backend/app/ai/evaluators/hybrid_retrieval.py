@@ -9,7 +9,7 @@ import sys
 import uuid
 from decimal import Decimal
 
-from app.ai.evaluators._common import Metric, load_jsonl, print_report
+from app.ai.evaluators._common import EVAL_USER_ID, Metric, load_jsonl, print_report
 from app.ai.evaluators._dbharness import postgres_available, seeded_session
 from app.ai.rag.retriever import (
     HybridRetriever,
@@ -19,7 +19,6 @@ from app.ai.rag.retriever import (
     structured_expense_total,
 )
 from app.core.config import settings
-from app.core.constants import DEMO_USER_ID
 
 DATASET = "hybrid_retrieval.jsonl"
 
@@ -42,7 +41,7 @@ def run() -> int:
         retriever = HybridRetriever(session)
         for row in load_jsonl(DATASET):
             k = row["top_k"]
-            cands = retriever.search(user_id=DEMO_USER_ID, query=row["query"], top_k=k)
+            cands = retriever.search(user_id=EVAL_USER_ID, query=row["query"], top_k=k)
             selected = select_relevant(
                 cands,
                 vector_max_distance=settings.ai_rag_vector_max_distance,
@@ -60,7 +59,7 @@ def run() -> int:
             rejection.add(all(c.category == row["relevant_category"] for c in selected))
             agg = selected_total(
                 session,
-                DEMO_USER_ID,
+                EVAL_USER_ID,
                 [c.transaction_id for c in selected],
                 tx_type="expense",
             )
@@ -71,7 +70,7 @@ def run() -> int:
         isolation.add(len(other) == 0)
 
         # Consulta estructurada exacta (SQL, no LLM).
-        agg = structured_expense_total(session, DEMO_USER_ID, SearchFilters(category="transporte"))
+        agg = structured_expense_total(session, EVAL_USER_ID, SearchFilters(category="transporte"))
         structured.add(agg["total"] == Decimal("27000.00") and agg["count"] == 2)
 
     metrics = [precision, recall, mrr, rejection, aggregate, isolation, structured]

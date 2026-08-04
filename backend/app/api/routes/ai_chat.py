@@ -30,7 +30,6 @@ from app.core.database import get_db
 from app.core.security import CurrentUser
 from app.schemas.ai_usage import AIUsageResponse
 from app.services import ai_chat_service, ai_usage_service
-from app.services.ai_usage_service import AIUsageKind
 from app.services.draft_store import DraftStore, get_draft_store
 
 router = APIRouter(prefix="/ai", tags=["ai-copiloto"])
@@ -48,7 +47,7 @@ def chat(
     # `quota.consume` se le pasa al servicio en vez de llamarlo acá: el servicio lo
     # ejecuta después de descartar el 409 por acción pendiente, que es una validación
     # que no llega a invocar al modelo y por lo tanto no debe gastar cuota.
-    with ai_usage_service.daily_quota(db, current_user.id, AIUsageKind.COPILOT_CHAT) as quota:
+    with ai_usage_service.daily_quota(db, current_user.id) as quota:
         answer = ai_chat_service.chat(
             db,
             payload.message,
@@ -67,17 +66,17 @@ def chat(
 @router.get(
     "/usage",
     response_model=AIUsageResponse,
-    summary="Cuánta cuota de IA le queda hoy a la cuenta",
+    summary="Cuántas consultas inteligentes le quedan hoy a la cuenta",
     description=(
-        "Uso del día para las operaciones de IA con límite, más el umbral a partir del "
-        "cual conviene avisar. Solo lectura: consultar no gasta cuota. El día se corta a "
-        "las 00:00 de Argentina."
+        "Uso del día de la cuota compartida por todos los canales de IA, más el umbral a "
+        "partir del cual conviene avisar. Solo lectura: consultar no gasta cuota. El día "
+        "se corta a las 00:00 de la zona informada en `timezone`."
     ),
 )
 def get_usage(
     current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]
 ) -> AIUsageResponse:
-    return AIUsageResponse.from_status(ai_usage_service.get_all_status(db, current_user.id))
+    return AIUsageResponse.from_status(ai_usage_service.get_status(db, current_user.id))
 
 
 @router.get(

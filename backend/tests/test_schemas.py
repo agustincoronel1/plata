@@ -75,12 +75,12 @@ def test_movimiento_valido_normaliza_categoria_y_recorta() -> None:
     tx = TransactionCreate(
         type="expense",
         amount="18000.00",
-        category="  SUPERMERCADO ",
+        category="  COMIDA ",
         description="  Compra semanal  ",
         occurred_on=TODAY,
         payment_method="  Mercado Pago ",
     )
-    assert tx.category == "supermercado"
+    assert tx.category == "comida"
     assert tx.description == "Compra semanal"
     assert tx.payment_method == "Mercado Pago"
     assert isinstance(tx.amount, Decimal)
@@ -107,9 +107,9 @@ def test_movimiento_rechaza_tipo_invalido() -> None:
         TransactionCreate(type="transfer", amount="10", category="comida")
 
 
-def test_movimiento_rechaza_categoria_vacia() -> None:
-    with pytest.raises(ValidationError):
-        TransactionCreate(type="expense", amount="10", category="   ")
+def test_movimiento_con_categoria_vacia_no_falla_y_cae_en_otros() -> None:
+    """La categoría dejó de ser obligatoria en la entrada: sin pistas, el gasto es 'otros'."""
+    assert TransactionCreate(type="expense", amount="10", category="   ").category == "otros"
 
 
 def test_movimiento_patch_vacio_rechazado() -> None:

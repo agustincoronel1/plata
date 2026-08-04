@@ -19,7 +19,6 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.constants import DEMO_USER_ID
 from app.core.database import SessionLocal
 from app.models import (
     Commitment,
@@ -31,8 +30,14 @@ from app.models import (
 )
 
 # UUID fijos: son la clave de la idempotencia. No cambiarlos, porque una base ya
-# sembrada quedaría con registros duplicados. DEMO_USER_ID es compartido con los
-# endpoints y vive en app.core.constants; no se duplica acá.
+# sembrada quedaría con registros duplicados.
+#
+# DEMO_USER_ID vive acá y en ningún otro lado. Es del perfil que crea ESTE script, no una
+# identidad del sistema: ningún módulo de producción lo importa, ninguna función lo toma
+# como valor por defecto y el flujo de IA jamás lo usa como respaldo. El usuario de una
+# petición sale siempre del JWT verificado (`app.core.security`).
+DEMO_USER_ID = UUID("11111111-1111-4111-8111-111111111111")
+
 SUPERMARKET_TRANSACTION_ID = UUID("22222222-2222-4222-8222-222222222201")
 FUEL_TRANSACTION_ID = UUID("22222222-2222-4222-8222-222222222202")
 DELIVERY_TRANSACTION_ID = UUID("22222222-2222-4222-8222-222222222203")
@@ -76,7 +81,7 @@ def build_transactions(today: date) -> list[Transaction]:
             user_id=DEMO_USER_ID,
             type=TransactionType.EXPENSE,
             amount=Decimal("18000.00"),
-            category="supermercado",
+            category="comida",
             description="Compra semanal",
             occurred_on=today,
             payment_method="Mercado Pago",

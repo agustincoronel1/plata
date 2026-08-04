@@ -15,10 +15,9 @@ import sys
 from datetime import date
 from decimal import Decimal
 
-from app.ai.evaluators._common import Metric, load_jsonl, print_report
+from app.ai.evaluators._common import EVAL_USER_ID, Metric, load_jsonl, print_report
 from app.ai.gateway import AIGateway, build_provider
 from app.core.config import Settings
-from app.core.constants import DEMO_USER_ID
 from app.services import ai_transaction_service as svc
 from app.services.draft_store import InMemoryDraftStore
 
@@ -47,7 +46,7 @@ def run(provider_name: str = "mock") -> int:
         as_of = date.fromisoformat(row["as_of"])
         try:
             resp = svc.parse_transaction(
-                gateway, InMemoryDraftStore(), row["input"], as_of=as_of, user_id=DEMO_USER_ID
+                gateway, InMemoryDraftStore(), row["input"], as_of=as_of, user_id=EVAL_USER_ID
             )
         except Exception as exc:  # noqa: BLE001 - una salida inválida cuenta como fallo
             schema.add(False)

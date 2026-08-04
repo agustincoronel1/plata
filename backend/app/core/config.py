@@ -53,16 +53,18 @@ class Settings(BaseSettings):
     ai_embedding_model: str = "text-embedding-3-small"
     ai_embedding_dimension: int = 1536
 
-    # --- Límites diarios de uso de IA ---
-    # Protección de costos para una demo pública: acotan cuánto puede gastar cada cuenta
-    # por día. No son un sistema antifraude. Se cuentan solo las operaciones que llegan a
-    # invocar al proveedor; una validación que falla antes no gasta cuota.
-    ai_daily_chat_limit: int = 20
-    ai_daily_parse_limit: int = 10
+    # --- Límite diario de consultas inteligentes ---
+    # Protección de costos para una beta pública: acota cuánto puede gastar cada cuenta por
+    # día. No es un sistema antifraude. Es UNA sola cuota compartida por todos los canales
+    # (copiloto web, interpretación de movimientos y, más adelante, WhatsApp). Se cuentan
+    # solo las operaciones que llegan a invocar al proveedor; una validación que falla
+    # antes no gasta cuota.
+    ai_daily_limit: int = 10
     # A partir de cuántos usos restantes se avisa al usuario que se está quedando sin cuota.
     ai_usage_warning_threshold: int = 3
     # Zona horaria del corte diario: el contador se reinicia a las 00:00 de Argentina, que
-    # es cuando la persona espera tener el día nuevo, no a medianoche UTC.
+    # es cuando la persona espera tener el día nuevo, no a medianoche UTC. Es una sola y
+    # está definida acá: no depende de la zona del servidor ni de la del navegador.
     ai_usage_timezone: str = "America/Argentina/Buenos_Aires"
 
     # --- Autenticación (Supabase Auth) ---

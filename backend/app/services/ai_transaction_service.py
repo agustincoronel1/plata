@@ -40,6 +40,7 @@ from app.schemas.ai_transaction import (
 )
 from app.schemas.transaction import TransactionCreate, TransactionResponse
 from app.services import transaction_service
+from app.services.categorizer import resolve_expense_category
 from app.services.draft_store import Draft, DraftStore
 
 # Campos de un movimiento que pueden venir de la IA o corregirse a mano.
@@ -69,7 +70,9 @@ def parse_transaction(
     result = gateway.parse_transaction(source_text=source_text, as_of=today, trace_id=trace_id)
     output = result.output
 
-    transaction, missing, ambiguities, is_confirmable = _apply_business_rules(output, today)
+    transaction, missing, ambiguities, is_confirmable = _apply_business_rules(
+        output, today, source_text
+    )
     requires_confirmation = transaction is not None
 
     payload = {
@@ -218,7 +221,7 @@ def _build_transaction_payload(
 
 
 def _apply_business_rules(
-    output: TransactionParseModelOutput, as_of: date
+    output: TransactionParseModelOutput, as_of: date, source_text: str = ""
 ) -> tuple[ParsedTransactionDraft | None, list[str], list[str], bool]:
     """Ajusta missing/ambiguities y decide si el borrador es confirmable sin correcciones."""
     if output.intent is AIIntent.UNKNOWN or output.transaction is None:
@@ -251,7 +254,15 @@ def _apply_business_rules(
         add_missing("type")
         confirmable = False
 
-    if tx.category is None:
+    # Categoría del gasto: la resuelven las reglas determinísticas, sin una segunda llamada
+    # al modelo. Lo que el modelo haya propuesto se respeta si está en el vocabulario fijo y,
+    # si no, entra como pista junto con la descripción y el texto original.
+    if tx.type is TransactionType.EXPENSE:
+        tx.category = resolve_expense_category(tx.category, tx.description, source_text)
+        # Ya no falta: aunque el modelo la haya declarado faltante, el gasto tiene categoría.
+        if "category" in missing:
+            missing.remove("category")
+    elif tx.category is None:
         add_missing("category")
         confirmable = False
 

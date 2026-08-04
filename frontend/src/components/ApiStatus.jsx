@@ -1,39 +1,35 @@
-import { useEffect, useState } from 'react'
-
-import { fetchApiHealth } from '../services/api'
+import { useBackendStatus } from '../backend/BackendStatusContext'
 
 const LABELS = {
-  loading: 'Verificando API',
-  online: 'API conectada',
-  offline: 'API desconectada',
+  checking: 'Verificando API',
+  ready: 'API conectada',
+  waking: 'Iniciando servidor',
+  unavailable: 'API desconectada',
+}
+
+// El punto de color solo distingue tres situaciones; "arrancando" comparte el aspecto de
+// "verificando" porque para quien mira es lo mismo: todavía no se sabe.
+const DOT_STATE = {
+  checking: 'loading',
+  ready: 'online',
+  waking: 'loading',
+  unavailable: 'offline',
 }
 
 /**
  * Indicador discreto del estado del backend.
  *
- * Una única consulta al montar: sin polling ni reintentos automáticos.
+ * No consulta nada por su cuenta: lee el estado que ya mantiene `BackendStatusProvider`.
+ * Antes hacía su propio `fetch` a `/health` al montar, y con el gate de arranque eso serían
+ * dos healthchecks en paralelo para responder la misma pregunta.
  */
 export default function ApiStatus() {
-  const [state, setState] = useState('loading')
-
-  useEffect(() => {
-    let active = true
-
-    fetchApiHealth().then((result) => {
-      if (active) {
-        setState(result.ok ? 'online' : 'offline')
-      }
-    })
-
-    return () => {
-      active = false
-    }
-  }, [])
+  const { status } = useBackendStatus()
 
   return (
-    <p className="api-status" data-state={state} role="status" aria-live="polite">
+    <p className="api-status" data-state={DOT_STATE[status]} role="status" aria-live="polite">
       <span className="api-status__dot" aria-hidden="true" />
-      {LABELS[state]}
+      {LABELS[status]}
     </p>
   )
 }

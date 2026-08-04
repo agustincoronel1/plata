@@ -3,15 +3,31 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import TransactionType
 from app.schemas.common import Category, NonEmptyUpdate, PositiveMoney, empty_to_none
+from app.services.categorizer import OTHER_CATEGORY, resolve_expense_category
 
 # description y payment_method son opcionales: llegan recortados (max_length evita chocar
 # con String(255)/String(60) de la base) y, si quedan vacíos, se guardan como NULL.
+
+# La categoría de un GASTO es opcional en la entrada: si no llega (o llega fuera del
+# vocabulario fijo), la resuelven las reglas determinísticas de `categorizer` a partir del
+# texto disponible. Los INGRESOS conservan su categoría de texto libre.
+OptionalCategory = Annotated[str | None, Field(default=None, max_length=60)]
+
+
+def _resolve_category(
+    tx_type: TransactionType, category: str | None, description: str | None
+) -> str:
+    if tx_type is TransactionType.EXPENSE:
+        return resolve_expense_category(category, description)
+    normalized = (category or "").strip().lower()
+    return normalized or OTHER_CATEGORY
 
 
 def _no_future(value: date) -> date:
@@ -28,7 +44,7 @@ class TransactionCreate(BaseModel):
 
     type: TransactionType
     amount: PositiveMoney
-    category: Category
+    category: OptionalCategory = None
     description: str | None = Field(default=None, max_length=255)
     occurred_on: date = Field(default_factory=date.today)
     payment_method: str | None = Field(default=None, max_length=60)
@@ -36,6 +52,12 @@ class TransactionCreate(BaseModel):
     _clean_description = field_validator("description")(empty_to_none)
     _clean_payment_method = field_validator("payment_method")(empty_to_none)
     _check_occurred_on = field_validator("occurred_on")(_no_future)
+
+    @model_validator(mode="after")
+    def _categorize(self) -> TransactionCreate:
+        """Deja la categoría siempre resuelta: nunca se guarda un gasto sin categoría."""
+        self.category = _resolve_category(self.type, self.category, self.description)
+        return self
 
 
 class TransactionUpdate(NonEmptyUpdate):

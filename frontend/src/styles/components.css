@@ -48,11 +48,12 @@
 
 /* ---------- Saldo protagonista ---------- */
 
+/* Bloque compacto a propósito: el disponible y el saldo mandan, sin aire de más. */
 .hero {
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-xl);
-  padding: var(--space-6) var(--space-5);
+  padding: var(--space-5) var(--space-4);
   color: var(--color-on-primary);
   background:
     radial-gradient(120% 140% at 100% 0%, var(--color-primary-soft) 0%, transparent 55%),
@@ -60,7 +61,7 @@
   box-shadow: var(--shadow-primary);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 /* Forma abstracta propia: un arco suave que da profundidad sin ilustraciones. */
@@ -143,9 +144,29 @@
   max-width: 42ch;
 }
 
+/* El saldo acompaña al disponible en una sola línea: sigue siendo protagonista sin
+   ocupar una tarjeta propia. */
+.hero__balance {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-small);
+  color: rgb(13 15 13 / 78%);
+}
+
+.hero__balance-label {
+  font-weight: var(--weight-semibold);
+}
+
+.hero__balance-value {
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
 .hero__daily {
-  margin-top: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   background-color: rgb(13 15 13 / 88%);
   color: var(--color-text);
@@ -268,6 +289,24 @@
   gap: var(--space-3);
 }
 
+/**
+ * Variante compacta: tres métricas de una línea (ingresos, gastos, ahorro del mes, o el
+ * detalle de la situación). Menos alto y menos padding que la grilla de dos columnas.
+ */
+.metrics--compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.metrics--compact .metric {
+  padding: var(--space-3);
+  gap: var(--space-1);
+}
+
+.metrics--compact .metric__value {
+  font-size: clamp(0.9375rem, 0.85rem + 0.6vw, 1.25rem);
+}
+
 .metric {
   min-width: 0;
   padding: var(--space-4);
@@ -305,6 +344,139 @@
 
 .metric__hint {
   font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Tu situación: conclusión + detalle plegable ---------- */
+
+.situation__insight {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  border-left: 3px solid var(--color-primary);
+  font-size: var(--text-small);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.situation__detail > summary {
+  cursor: pointer;
+  min-height: var(--tap-target);
+  display: flex;
+  align-items: center;
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-secondary);
+}
+
+.situation__detail > summary:hover {
+  color: var(--color-text);
+}
+
+.situation__detail[open] > summary {
+  margin-bottom: var(--space-3);
+}
+
+/* ---------- En qué se fue tu plata (torta) ---------- */
+
+.donut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.donut__chart {
+  position: relative;
+  width: min(13rem, 60vw);
+  flex: none;
+}
+
+.donut__chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/**
+ * Cada porción es un círculo de circunferencia 100 (r = 15.9155): el porcentaje se usa
+ * tal cual como `stroke-dasharray`. El giro de -90° arranca el gráfico a las 12 en punto.
+ * Sin animaciones: el gráfico aparece dibujado.
+ */
+.donut__slice {
+  fill: none;
+  stroke-width: 5.5;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+.donut__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  pointer-events: none;
+  text-align: center;
+}
+
+.donut__center-label {
+  font-size: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.donut__center-value {
+  font-size: 1.125rem;
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.donut__legend {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* La identidad la lleva el nombre, no el color: la muestra solo acompaña. */
+.donut__legend-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-xs);
+  background-color: var(--color-surface-raised);
+  font-size: var(--text-label);
+}
+
+.donut__swatch {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 3px;
+  flex: none;
+}
+
+.donut__legend-name {
+  font-weight: var(--weight-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut__legend-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-bold);
+}
+
+.donut__legend-share {
+  min-width: 3.25rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-muted);
 }
 
@@ -625,6 +797,17 @@
 
 .state--warning {
   border-color: color-mix(in srgb, var(--color-warning) 40%, var(--color-border));
+}
+
+/* Arranque del servidor: no es un error, es una espera. Se ve como el resto de las cargas
+   y no toma prestado el color de advertencia. */
+.state--waking {
+  gap: var(--space-4);
+}
+
+.state__detail {
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
 }
 
 .state__icon {
@@ -1249,6 +1432,11 @@
   flex-direction: column;
   gap: var(--space-3);
   font-size: var(--text-small);
+}
+
+.copilot__pending-field {
+  font-size: var(--text-label);
+  color: var(--color-text-secondary);
 }
 
 .copilot__pending-note {

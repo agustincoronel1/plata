@@ -126,7 +126,7 @@ def test_transacciones_demo() -> None:
     assert all(t.type is TransactionType.EXPENSE for t in (supermercado, nafta, delivery))
     assert all(t.user_id == DEMO_USER_ID for t in (supermercado, nafta, delivery))
 
-    assert (supermercado.amount, supermercado.category) == (Decimal("18000.00"), "supermercado")
+    assert (supermercado.amount, supermercado.category) == (Decimal("18000.00"), "comida")
     assert supermercado.occurred_on == TODAY
     assert supermercado.payment_method == "Mercado Pago"
 

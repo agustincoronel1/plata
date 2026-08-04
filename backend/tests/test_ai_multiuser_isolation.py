@@ -27,6 +27,7 @@ from app.ai.gateway import AIGateway, get_ai_gateway
 from app.ai.providers.mock import MockAIProvider
 from app.main import app
 from app.models.ai_draft import AIDraft
+from app.models.transaction import Transaction
 from app.services.draft_store import InMemoryDraftStore, get_draft_store
 from tests.conftest import (
     API,
@@ -481,3 +482,83 @@ def test_un_user_id_en_el_parse_se_rechaza(
 
     assert response.status_code == 422
     assert ai_store._drafts == {}
+
+
+# ---------- Lo que la IA escribe queda a nombre de quien pidió ----------
+
+
+def test_la_transaccion_creada_por_ia_es_del_usuario_autenticado(
+    ai_client_for: Callable[..., TestClient], db_session: Session
+) -> None:
+    """No alcanza con que el saldo del otro no se mueva: la fila tiene que llevar su dueño.
+
+    Se mira la tabla directamente porque es la única forma de ver el `user_id` que quedó
+    escrito; por la API cada quien ve solo lo suyo y un error de atribución podría pasar
+    desapercibido.
+    """
+    _profile(ai_client_for(TEST_USER_ID))
+    _profile(ai_client_for(OTHER_USER_ID))
+    propio = _parse(ai_client_for(OTHER_USER_ID))
+
+    creada = ai_client_for(OTHER_USER_ID).post(
+        f"{API}/ai/transactions/{propio['draft_id']}/confirm", json={"confirmed": True}
+    )
+
+    assert creada.status_code == 201
+    transaction_id = uuid.UUID(creada.json()["transaction"]["id"])
+    duenio = db_session.execute(
+        select(Transaction.user_id).where(Transaction.id == transaction_id)
+    ).scalar_one()
+    assert duenio == OTHER_USER_ID
+
+
+def test_la_transaccion_que_aprueba_el_copiloto_es_del_usuario_autenticado(
+    ai_client_for: Callable[..., TestClient], db_session: Session
+) -> None:
+    """El otro camino de escritura: la acción pendiente del grafo, aprobada por su dueño."""
+    _profile(ai_client_for(TEST_USER_ID))
+    _profile(ai_client_for(OTHER_USER_ID))
+    pendiente = (
+        ai_client_for(OTHER_USER_ID)
+        .post(f"{API}/ai/chat", json={"message": "Gasté 25 lucas ayer en nafta con débito"})
+        .json()
+    )
+    assert pendiente["requires_approval"] is True
+
+    aprobada = ai_client_for(OTHER_USER_ID).post(
+        f"{API}/ai/conversations/{pendiente['conversation_id']}/approve",
+        json={"action_id": pendiente["pending_action"]["action_id"]},
+    )
+
+    assert aprobada.status_code == 200
+    duenios = db_session.execute(select(Transaction.user_id)).scalars().all()
+    assert duenios == [OTHER_USER_ID]
+
+
+def test_la_consulta_de_una_cuenta_no_mira_los_movimientos_de_la_otra(
+    ai_client_for: Callable[..., TestClient],
+) -> None:
+    """Dos cuentas con gastos distintos preguntan lo mismo y no se cruzan las respuestas."""
+    _profile(ai_client_for(TEST_USER_ID), current_balance="500000.00")
+    _profile(ai_client_for(OTHER_USER_ID), current_balance="500000.00")
+
+    ai_client_for(TEST_USER_ID).post(
+        f"{API}/transactions",
+        json={
+            "type": "expense",
+            "amount": "123456.00",
+            "category": "supermercado",
+            "description": "compra enorme de una cuenta",
+            "occurred_on": "2026-07-30",
+        },
+    )
+
+    respuesta = ai_client_for(OTHER_USER_ID).post(
+        f"{API}/ai/chat", json={"message": "¿Cuánto gasté en supermercado?"}
+    )
+
+    assert respuesta.status_code == 200
+    body = respuesta.json()
+    assert "123456" not in body["answer"].replace(".", "").replace(",", "")
+    # Y ninguna evidencia citada puede venir de la otra cuenta.
+    assert all("compra enorme" not in e["title"] for e in body["evidence"])

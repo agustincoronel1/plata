@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { ApiError } from '../services/api'
+import { CATEGORY_LABELS, EXPENSE_CATEGORIES, suggestCategory } from '../services/categories'
 import FeedbackMessage from './FeedbackMessage'
 import FormField from './FormField'
 import Modal from './Modal'
@@ -13,15 +14,20 @@ function todayIso() {
 }
 
 function initialValues(transaction, prefill) {
+  // `prefill.description` conserva el texto que el usuario escribió para la IA cuando
+  // cae al formulario manual (fallback).
+  const description = transaction?.description ?? prefill?.description ?? ''
+  const type = transaction?.type ?? prefill?.type ?? 'expense'
   return {
     // `prefill.type` viene de las acciones rápidas ("Registrar gasto" / "Registrar
     // ingreso"): solo preselecciona el desplegable, que se puede cambiar igual.
-    type: transaction?.type ?? prefill?.type ?? 'expense',
+    type,
     amount: transaction?.amount ?? '',
-    category: transaction?.category ?? '',
-    // `prefill.description` conserva el texto que el usuario escribió para la IA cuando
-    // cae al formulario manual (fallback).
-    description: transaction?.description ?? prefill?.description ?? '',
+    // Un gasto nuevo arranca con la categoría que sugieren las reglas (mismas que las del
+    // backend) y se puede cambiar siempre.
+    category:
+      transaction?.category ?? (type === 'expense' ? suggestCategory(description) : ''),
+    description,
     occurred_on: transaction?.occurred_on ?? todayIso(),
     payment_method: transaction?.payment_method ?? '',
   }
@@ -41,9 +47,34 @@ export default function TransactionForm({ transaction, prefill, onSubmit, onClos
   const [fieldErrors, setFieldErrors] = useState({})
   const [generalError, setGeneralError] = useState(null)
   const [busy, setBusy] = useState(false)
+  // Mientras la persona no elija una categoría a mano, la sugerencia sigue a la
+  // descripción. En cuanto la elige, manda ella y no se pisa nunca más.
+  const [categoryChosen, setCategoryChosen] = useState(isEdit)
 
   function update(field, value) {
     setValues((current) => ({ ...current, [field]: value }))
+  }
+
+  // Sugerencia vigente: un gasto la toma de la descripción; un ingreso no se sugiere.
+  function suggestedCategory(type, description, current) {
+    if (categoryChosen) return current
+    return type === 'expense' ? suggestCategory(description) : ''
+  }
+
+  function updateDescription(value) {
+    setValues((current) => ({
+      ...current,
+      description: value,
+      category: suggestedCategory(current.type, value, current.category),
+    }))
+  }
+
+  function updateType(value) {
+    setValues((current) => ({
+      ...current,
+      type: value,
+      category: suggestedCategory(value, current.description, current.category),
+    }))
   }
 
   async function handleSubmit(event) {
@@ -85,7 +116,7 @@ export default function TransactionForm({ transaction, prefill, onSubmit, onClos
               id={id}
               className="input"
               value={values.type}
-              onChange={(event) => update('type', event.target.value)}
+              onChange={(event) => updateType(event.target.value)}
               aria-describedby={describedBy}
               aria-invalid={invalid}
             >
@@ -114,22 +145,6 @@ export default function TransactionForm({ transaction, prefill, onSubmit, onClos
           )}
         </FormField>
 
-        <FormField id="tx-category" label="Categoría" error={fieldErrors.category}>
-          {({ id, describedBy, invalid }) => (
-            <input
-              id={id}
-              className="input"
-              type="text"
-              value={values.category}
-              onChange={(event) => update('category', event.target.value)}
-              aria-describedby={describedBy}
-              aria-invalid={invalid}
-              maxLength={60}
-              required
-            />
-          )}
-        </FormField>
-
         <FormField
           id="tx-description"
           label="Descripción (opcional)"
@@ -141,12 +156,61 @@ export default function TransactionForm({ transaction, prefill, onSubmit, onClos
               className="input"
               type="text"
               value={values.description}
-              onChange={(event) => update('description', event.target.value)}
+              onChange={(event) => updateDescription(event.target.value)}
               aria-describedby={describedBy}
               aria-invalid={invalid}
               maxLength={255}
             />
           )}
+        </FormField>
+
+        {/* Gastos: lista fija. Ingresos: texto libre, como siempre. */}
+        <FormField
+          id="tx-category"
+          label="Categoría"
+          hint={
+            values.type === 'expense' && !categoryChosen
+              ? 'Sugerida según la descripción. Podés cambiarla.'
+              : null
+          }
+          error={fieldErrors.category}
+        >
+          {({ id, describedBy, invalid }) =>
+            values.type === 'expense' ? (
+              <select
+                id={id}
+                className="input"
+                value={values.category}
+                onChange={(event) => {
+                  setCategoryChosen(true)
+                  update('category', event.target.value)
+                }}
+                aria-describedby={describedBy}
+                aria-invalid={invalid}
+              >
+                {EXPENSE_CATEGORIES.map((name) => (
+                  <option key={name} value={name}>
+                    {CATEGORY_LABELS[name]}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id={id}
+                className="input"
+                type="text"
+                value={values.category}
+                onChange={(event) => {
+                  setCategoryChosen(true)
+                  update('category', event.target.value)
+                }}
+                aria-describedby={describedBy}
+                aria-invalid={invalid}
+                maxLength={60}
+                required
+              />
+            )
+          }
         </FormField>
 
         <FormField id="tx-date" label="Fecha" error={fieldErrors.occurred_on}>

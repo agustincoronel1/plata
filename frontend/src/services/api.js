@@ -50,9 +50,14 @@ const UNEXPECTED_MESSAGE = 'Ocurrió un error inesperado. Intentá de nuevo.'
 const AI_TIMEOUT_MESSAGE = 'La IA tardó más de lo esperado. Intentá nuevamente.'
 const TIMEOUT_MESSAGE = 'El servidor tardó más de lo esperado. Intentá nuevamente.'
 export const UNAUTHORIZED_MESSAGE = 'Tu sesión expiró. Iniciá sesión de nuevo.'
+/**
+ * Respaldo del texto del 429. El backend manda el suyo (con el límite real configurado) y
+ * ese es el que se muestra; esto cubre el caso de que el detalle no llegue. Nunca se
+ * muestra "Algo salió mal" para un límite alcanzado.
+ */
 export const AI_LIMIT_MESSAGE =
-  'Llegaste al límite de uso de IA por hoy. Volvé a intentar mañana; mientras tanto podés ' +
-  'usar el formulario manual.'
+  'Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando las ' +
+  'funciones manuales de Plata y volver a consultar mañana.'
 
 /**
  * Texto del 429 de cuota diaria. El backend manda `detail` como objeto con `message`; si
@@ -313,13 +318,40 @@ export function rejectCopilotAction(conversationId, actionId) {
   })
 }
 
+// ---------- Disponibilidad del backend ----------
+
+/**
+ * Cuánto se espera al `/health` antes de dar por perdido un intento.
+ *
+ * Más generoso que `DEFAULT_TIMEOUT_MS` a propósito: en Render con plan gratuito la
+ * primera petición después de un rato queda esperando a que el servicio arranque, y
+ * cortarla a los 5 segundos convertiría un arranque normal en un "no se pudo conectar".
+ */
+export const HEALTH_TIMEOUT_MS = 8000
+
+/**
+ * Códigos que devuelve un proxy cuando todavía no hay backend detrás. Con Render dormido
+ * son exactamente estos, y significan "esperá", no "está roto".
+ */
+const WAKING_STATUSES = new Set([502, 503, 504])
+
 /**
  * Healthcheck de la API, no el de la base: responde 200 mientras el backend esté vivo,
  * aunque PostgreSQL esté detenido. Resuelve siempre; nunca lanza.
+ *
+ * Devuelve `{ ok, version, status, waking }`. `waking` distingue "el servidor todavía no
+ * está levantado" (timeout, red caída, 502/503/504) de "el servidor contestó algo que está
+ * mal" (un 500, un 404): lo primero se reintenta con el mensaje de arranque, lo segundo es
+ * un error de verdad y conserva el mensaje genérico.
+ *
+ * `signal` permite cancelar desde afuera al desmontar el componente que la llamó; el
+ * timeout interno sigue existiendo igual, así que nunca queda una petición colgada.
  */
-export async function fetchApiHealth() {
+export async function fetchApiHealth({ signal, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort)
+  const timeout = setTimeout(abort, timeoutMs)
 
   try {
     const response = await fetch(`${API_URL}/health`, {
@@ -328,15 +360,22 @@ export async function fetchApiHealth() {
     })
 
     if (!response.ok) {
-      return { ok: false }
+      return { ok: false, status: response.status, waking: WAKING_STATUSES.has(response.status) }
     }
 
-    const body = await response.json()
-    return { ok: body?.status === 'ok', version: body?.version }
+    const body = await response.json().catch(() => null)
+    if (body?.status !== 'ok') {
+      // Respondió 200 pero no es el healthcheck de Plata (un proxy, una página de error):
+      // tampoco es "arrancando".
+      return { ok: false, status: response.status, waking: false }
+    }
+    return { ok: true, version: body?.version, status: response.status, waking: false }
   } catch {
-    // Red caída, backend apagado, CORS o timeout: para la UI son lo mismo.
-    return { ok: false }
+    // Red caída, backend apagado, CORS o timeout. Con Render gratuito, el caso normal es
+    // que el servicio esté durmiendo, así que se trata como arranque y se reintenta.
+    return { ok: false, status: 0, waking: true }
   } finally {
     clearTimeout(timeout)
+    signal?.removeEventListener('abort', abort)
   }
 }

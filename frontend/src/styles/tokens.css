@@ -43,8 +43,9 @@
     sans-serif;
 
   /* El piso es el que permite que un saldo de ocho cifras entre entero en un teléfono
-     de 320px sin partirse ni recortarse. */
-  --text-hero: clamp(2.25rem, 10vw, 4.5rem);
+     de 320px sin partirse ni recortarse. El techo es más bajo que el original: el bloque
+     principal ahora muestra disponible y saldo juntos y no necesita tanta altura. */
+  --text-hero: clamp(2.25rem, 8.5vw, 3.5rem);
   --text-title: clamp(1.75rem, 5vw, 2.5rem);
   --text-section: clamp(1.1rem, 2.4vw, 1.35rem);
   --text-body: 1rem;

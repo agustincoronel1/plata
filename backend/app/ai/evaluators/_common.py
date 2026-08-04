@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from app.core.config import settings
 
@@ -24,6 +25,12 @@ settings.ai_api_key = ""
 settings.ai_embedding_provider = "mock"
 
 EVALS_DIR = Path(__file__).resolve().parents[3] / "evals"
+
+# Dueño de los datos que siembran y consultan los evaluadores. Es propio del banco de
+# pruebas y no coincide con ningún usuario real ni con el perfil demo del seed: los evals
+# corren en una transacción que se revierte y no deben depender de nada sembrado afuera.
+# Se pasa siempre de forma explícita; ninguna función del backend lo toma por defecto.
+EVAL_USER_ID = UUID("44444444-4444-4444-8444-444444444444")
 
 
 def load_jsonl(name: str) -> list[dict[str, Any]]:

@@ -14,12 +14,11 @@ from app.ai.providers.mock import MockAIProvider
 from app.ai.rag.embeddings import MockEmbeddingProvider
 from app.ai.rag.indexer import backfill
 from app.ai.rag.retriever import HybridRetriever, SearchFilters, structured_expense_total
-from app.core.constants import DEMO_USER_ID
 from app.models.transaction_search import TransactionSearchDocument
 from app.schemas.transaction import TransactionCreate
 from app.services import transaction_service as ts
 from app.services.draft_store import InMemoryDraftStore
-from tests.conftest import requires_postgres
+from tests.conftest import TEST_USER_ID, requires_postgres
 
 pytestmark = requires_postgres
 
@@ -34,7 +33,7 @@ def _tx(
 ):
     return ts.create_transaction(
         session,
-        DEMO_USER_ID,
+        TEST_USER_ID,
         TransactionCreate(
             type=tx_type,
             amount=Decimal(amount),
@@ -61,14 +60,14 @@ def test_full_text_encuentra_por_palabra(
     make_profile()
     _tx(db_session, "transporte", "12000", "carga de nafta")
     _tx(db_session, "gastronomía", "8000", "cafe con leche")
-    res = HybridRetriever(db_session).search(user_id=DEMO_USER_ID, query="nafta", top_k=5)
+    res = HybridRetriever(db_session).search(user_id=TEST_USER_ID, query="nafta", top_k=5)
     assert any("nafta" in c.searchable_text for c in res)
 
 
 def test_hibrida_marca_metodos(db_session: Session, make_profile: Callable[..., dict]) -> None:
     make_profile()
     _tx(db_session, "transporte", "12000", "carga de nafta")
-    res = HybridRetriever(db_session).search(user_id=DEMO_USER_ID, query="nafta", top_k=5)
+    res = HybridRetriever(db_session).search(user_id=TEST_USER_ID, query="nafta", top_k=5)
     assert res
     assert res[0].methods == {"full_text", "vector"}
     assert res[0].rrf_score > 0
@@ -79,7 +78,7 @@ def test_structured_total_exacto(db_session: Session, make_profile: Callable[...
     _tx(db_session, "transporte", "12000", "nafta")
     _tx(db_session, "transporte", "15000", "nafta ruta")
     _tx(db_session, "gastronomía", "8000", "cafe")
-    agg = structured_expense_total(db_session, DEMO_USER_ID, SearchFilters(category="transporte"))
+    agg = structured_expense_total(db_session, TEST_USER_ID, SearchFilters(category="transporte"))
     assert agg["total"] == Decimal("27000.00")
     assert agg["count"] == 2
 
@@ -87,14 +86,15 @@ def test_structured_total_exacto(db_session: Session, make_profile: Callable[...
 def test_filtro_por_categoria(db_session: Session, make_profile: Callable[..., dict]) -> None:
     make_profile()
     _tx(db_session, "transporte", "12000", "nafta")
-    _tx(db_session, "supermercado", "42000", "compra")
+    _tx(db_session, "comida", "42000", "compra")
     res = HybridRetriever(db_session).search(
-        user_id=DEMO_USER_ID,
+        user_id=TEST_USER_ID,
         query="compra",
         top_k=5,
-        filters=SearchFilters(category="supermercado"),
+        filters=SearchFilters(category="comida"),
     )
-    assert all(c.category == "supermercado" for c in res)
+    assert res
+    assert all(c.category == "comida" for c in res)
 
 
 def test_filtro_tx_type_no_mezcla_gastos_e_ingresos(
@@ -105,13 +105,13 @@ def test_filtro_tx_type_no_mezcla_gastos_e_ingresos(
     income = _tx(db_session, "transporte", "50000", "nafta reintegro", tx_type="income")
 
     gastos = HybridRetriever(db_session).search(
-        user_id=DEMO_USER_ID,
+        user_id=TEST_USER_ID,
         query="nafta reintegro",
         top_k=5,
         filters=SearchFilters(tx_type="expense"),
     )
     ingresos = HybridRetriever(db_session).search(
-        user_id=DEMO_USER_ID,
+        user_id=TEST_USER_ID,
         query="nafta reintegro",
         top_k=5,
         filters=SearchFilters(tx_type="income"),
@@ -134,7 +134,7 @@ def test_tool_search_con_fecha_suma_solo_ids_relevantes(
         draft_store=InMemoryDraftStore(),
         gateway=AIGateway(MockAIProvider()),
         as_of=date(2026, 7, 24),
-        user_id=DEMO_USER_ID,
+        user_id=TEST_USER_ID,
     )
 
     result = run_tool(
@@ -164,7 +164,7 @@ def test_tool_search_sin_evidencia_no_inventa_total(
         draft_store=InMemoryDraftStore(),
         gateway=AIGateway(MockAIProvider()),
         as_of=date(2026, 7, 24),
-        user_id=DEMO_USER_ID,
+        user_id=TEST_USER_ID,
     )
 
     result = run_tool(
@@ -187,7 +187,7 @@ def test_aislamiento_por_usuario(db_session: Session, make_profile: Callable[...
     ).scalar_one()
     doc.user_id = uuid.uuid4()  # el doc pasa a ser de otro usuario
     db_session.flush()
-    res = HybridRetriever(db_session).search(user_id=DEMO_USER_ID, query="nafta", top_k=5)
+    res = HybridRetriever(db_session).search(user_id=TEST_USER_ID, query="nafta", top_k=5)
     assert all(c.transaction_id != tx.id for c in res)
 
 
@@ -196,7 +196,7 @@ def test_borrar_movimiento_borra_el_indice(
 ) -> None:
     make_profile()
     tx = _tx(db_session, "transporte", "12000", "nafta")
-    ts.delete_transaction(db_session, DEMO_USER_ID, tx.id)
+    ts.delete_transaction(db_session, TEST_USER_ID, tx.id)
     doc = db_session.execute(
         select(TransactionSearchDocument).where(TransactionSearchDocument.transaction_id == tx.id)
     ).scalar_one_or_none()

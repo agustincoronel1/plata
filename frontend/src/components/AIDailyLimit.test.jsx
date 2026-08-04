@@ -5,16 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AITransactionDialog from './AITransactionDialog'
 import CopilotPanel from './CopilotPanel'
 import * as api from '../services/api'
-import { AI_USAGE_KINDS, recordUsageFromHeaders, resetAIUsage } from '../services/aiUsage'
+import { recordUsageFromHeaders, resetAIUsage } from '../services/aiUsage'
 import { resetAuthBridge, setUnauthorizedHandler } from '../services/authToken'
 import { makeChatResponse, makeParseDraft } from '../test/fixtures'
 
 /**
- * Qué pasa en la interfaz cuando se agota la cuota diaria de IA.
+ * Qué pasa en la interfaz cuando se agotan las 10 consultas inteligentes del día.
  *
  * Un 429 no es una sesión caída y no es el backend apagado: la persona sigue logueada, la
  * conversación sigue en pantalla y el texto que escribió no se pierde. Lo único que cambia
- * es que esa operación no está disponible hasta mañana.
+ * es que la IA no está disponible hasta mañana; todo lo manual sigue funcionando.
  */
 
 vi.mock('../services/api', async (importOriginal) => {
@@ -32,36 +32,38 @@ vi.mock('../services/api', async (importOriginal) => {
 
 const { ApiError } = api
 
-const COPILOT_LIMIT_MESSAGE =
-  'Alcanzaste el límite diario del copiloto. Vas a poder volver a usarlo mañana.'
-const PARSE_LIMIT_MESSAGE =
-  'Alcanzaste el límite diario de interpretaciones con IA. Vas a poder volver a usarla mañana.'
+// El texto exacto que arma el backend con AI_DAILY_LIMIT=10. No se muestra "Algo salió
+// mal" para este caso: se dice qué pasó y qué se puede seguir haciendo.
+const LIMIT_MESSAGE =
+  'Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando las ' +
+  'funciones manuales de Plata y volver a consultar mañana.'
 
 /** El 429 que arma `api.js` a partir del detalle estructurado del backend. */
-function limitError(kind, message) {
+function limitError(message = LIMIT_MESSAGE) {
   return new ApiError(message, {
     status: 429,
     detail: {
       code: 'daily_ai_limit_reached',
       message,
-      kind,
-      limit: kind === AI_USAGE_KINDS.copilotChat ? 20 : 10,
-      used: kind === AI_USAGE_KINDS.copilotChat ? 20 : 10,
+      limit: 10,
+      used: 10,
       remaining: 0,
       resets_at: '2026-07-30T00:00:00-03:00',
+      reset_at: '2026-07-30T00:00:00-03:00',
+      timezone: 'America/Argentina/Buenos_Aires',
     },
   })
 }
 
 /** Simula las cabeceras que acompañan a cualquier respuesta con cuota, incluido el 429. */
-function recordRemaining(kind, remaining, { limit = 20, warnAt = 3 } = {}) {
+function recordRemaining(remaining, { limit = 10, warnAt = 3 } = {}) {
   recordUsageFromHeaders({
     get: (name) =>
       ({
-        'x-ai-daily-kind': kind,
         'x-ai-daily-limit': String(limit),
         'x-ai-daily-remaining': String(remaining),
         'x-ai-daily-warn-at': String(warnAt),
+        'x-ai-daily-reset-at': '2026-07-30T00:00:00-03:00',
       })[name.toLowerCase()] ?? null,
   })
 }
@@ -82,7 +84,7 @@ describe('copiloto: aviso de cuota', () => {
   it('avisa cuántas consultas quedan después de responder', async () => {
     const user = userEvent.setup()
     api.chatCopilot.mockImplementation(async () => {
-      recordRemaining(AI_USAGE_KINDS.copilotChat, 3)
+      recordRemaining(3)
       return makeChatResponse()
     })
     render(<CopilotPanel />)
@@ -90,14 +92,14 @@ describe('copiloto: aviso de cuota', () => {
     await user.click(screen.getByRole('button', { name: '¿Cuánto puedo gastar hoy?' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Te quedan 3 consultas al copiloto por hoy.',
+      'Te quedan 3 consultas inteligentes por hoy.',
     )
   })
 
   it('el aviso no es una burbuja de conversación ni queda en el historial', async () => {
     const user = userEvent.setup()
     api.chatCopilot.mockImplementation(async () => {
-      recordRemaining(AI_USAGE_KINDS.copilotChat, 2)
+      recordRemaining(2)
       return makeChatResponse({ answer: 'Podés gastar 12.000 por día.' })
     })
     render(<CopilotPanel />)
@@ -117,19 +119,19 @@ describe('copiloto: 429', () => {
   it('muestra el mensaje real del límite', async () => {
     const user = userEvent.setup()
     api.chatCopilot.mockRejectedValue(
-      limitError(AI_USAGE_KINDS.copilotChat, COPILOT_LIMIT_MESSAGE),
+      limitError(),
     )
     render(<CopilotPanel />)
 
     await user.click(screen.getByRole('button', { name: '¿Cuánto puedo gastar hoy?' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(COPILOT_LIMIT_MESSAGE)
+    expect(await screen.findByRole('alert')).toHaveTextContent(LIMIT_MESSAGE)
   })
 
   it('no dice que el backend está desconectado', async () => {
     const user = userEvent.setup()
     api.chatCopilot.mockRejectedValue(
-      limitError(AI_USAGE_KINDS.copilotChat, COPILOT_LIMIT_MESSAGE),
+      limitError(),
     )
     render(<CopilotPanel />)
 
@@ -145,7 +147,7 @@ describe('copiloto: 429', () => {
     const onUnauthorized = vi.fn()
     setUnauthorizedHandler(onUnauthorized)
     api.chatCopilot.mockRejectedValue(
-      limitError(AI_USAGE_KINDS.copilotChat, COPILOT_LIMIT_MESSAGE),
+      limitError(),
     )
     render(<CopilotPanel />)
 
@@ -164,7 +166,7 @@ describe('copiloto: 429', () => {
     await screen.findByText('Te quedan 12.000.')
 
     api.chatCopilot.mockRejectedValueOnce(
-      limitError(AI_USAGE_KINDS.copilotChat, COPILOT_LIMIT_MESSAGE),
+      limitError(),
     )
     await user.type(screen.getByRole('textbox'), '¿y mañana?')
     await user.keyboard('{Enter}')
@@ -186,7 +188,7 @@ describe('escribilo con IA: 429', () => {
   it('conserva el texto escrito', async () => {
     const user = userEvent.setup()
     api.parseAITransaction.mockRejectedValue(
-      limitError(AI_USAGE_KINDS.transactionParse, PARSE_LIMIT_MESSAGE),
+      limitError(),
     )
     renderDialog()
 
@@ -201,14 +203,14 @@ describe('escribilo con IA: 429', () => {
   it('muestra el mensaje real y no crea un borrador', async () => {
     const user = userEvent.setup()
     api.parseAITransaction.mockRejectedValue(
-      limitError(AI_USAGE_KINDS.transactionParse, PARSE_LIMIT_MESSAGE),
+      limitError(),
     )
     renderDialog()
 
     await user.type(screen.getByRole('textbox'), 'Gasté 25 mil en combustible')
     await user.click(screen.getByRole('button', { name: /interpretar/i }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(PARSE_LIMIT_MESSAGE)
+    expect(await screen.findByRole('alert')).toHaveTextContent(LIMIT_MESSAGE)
     // Sigue en el paso de escritura: no hay borrador que confirmar.
     expect(screen.queryByRole('button', { name: /confirmar/i })).not.toBeInTheDocument()
     expect(api.confirmAITransaction).not.toHaveBeenCalled()
@@ -218,7 +220,7 @@ describe('escribilo con IA: 429', () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     api.parseAITransaction.mockRejectedValue(
-      limitError(AI_USAGE_KINDS.transactionParse, PARSE_LIMIT_MESSAGE),
+      limitError(),
     )
     render(
       <AITransactionDialog onRegistered={vi.fn()} onFallback={vi.fn()} onClose={onClose} />,
@@ -232,10 +234,10 @@ describe('escribilo con IA: 429', () => {
     expect(screen.getByRole('textbox')).toBeInTheDocument()
   })
 
-  it('avisa cuántas interpretaciones quedan tras un uso exitoso', async () => {
+  it('avisa cuántas consultas inteligentes quedan tras un uso exitoso', async () => {
     const user = userEvent.setup()
     api.parseAITransaction.mockImplementation(async () => {
-      recordRemaining(AI_USAGE_KINDS.transactionParse, 1, { limit: 10 })
+      recordRemaining(1)
       return makeParseDraft()
     })
     renderDialog()
@@ -244,7 +246,7 @@ describe('escribilo con IA: 429', () => {
     await user.click(screen.getByRole('button', { name: /interpretar/i }))
 
     // Por texto y no por rol: el paso del borrador tiene su propio `role="status"`.
-    expect(await screen.findByText(/Te queda 1 interpretación con IA por hoy\./)).toBeInTheDocument()
+    expect(await screen.findByText(/Te queda 1 consulta inteligente por hoy\./)).toBeInTheDocument()
   })
 })
 
@@ -252,7 +254,7 @@ describe('los contadores no se guardan en el navegador', () => {
   it('no escribe nada en localStorage', () => {
     const setItem = vi.spyOn(window.localStorage, 'setItem')
 
-    recordRemaining(AI_USAGE_KINDS.copilotChat, 2)
+    recordRemaining(2)
 
     expect(setItem).not.toHaveBeenCalled()
     setItem.mockRestore()

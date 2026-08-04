@@ -1,7 +1,8 @@
 import { useState } from 'react'
 
-import { AI_USAGE_KINDS, getAIUsage } from '../services/aiUsage'
+import { getAIUsage } from '../services/aiUsage'
 import { ApiError, confirmAITransaction, parseAITransaction, rejectAITransaction } from '../services/api'
+import { CATEGORY_LABELS, EXPENSE_CATEGORIES, OTHER_CATEGORY } from '../services/categories'
 import AIUsageNotice from './AIUsageNotice'
 import AIConfidenceIndicator from './AIConfidenceIndicator'
 import FeedbackMessage from './FeedbackMessage'
@@ -11,10 +12,13 @@ import Modal from './Modal'
 const TX_FIELDS = ['type', 'amount', 'category', 'description', 'occurred_on', 'payment_method']
 
 function draftToValues(transaction) {
+  const type = transaction?.type ?? 'expense'
   return {
-    type: transaction?.type ?? 'expense',
+    type,
     amount: transaction?.amount ?? '',
-    category: transaction?.category ?? '',
+    // Un gasto siempre tiene categoría: si el borrador viniera sin ella, el desplegable
+    // arranca en "otros" (lo mismo que guardaría el backend).
+    category: transaction?.category || (type === 'expense' ? OTHER_CATEGORY : ''),
     description: transaction?.description ?? '',
     occurred_on: transaction?.occurred_on ?? '',
     payment_method: transaction?.payment_method ?? '',
@@ -38,8 +42,9 @@ export default function AITransactionDialog({ onRegistered, onFallback, onClose 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
-  // Cuánta cuota diaria de interpretación queda. La decide el backend; acá solo se muestra.
-  const [usage, setUsage] = useState(() => getAIUsage(AI_USAGE_KINDS.transactionParse))
+  // Cuántas consultas inteligentes quedan hoy. Es la misma cuota que gasta el copiloto:
+  // la decide el backend y acá solo se muestra.
+  const [usage, setUsage] = useState(() => getAIUsage())
 
   function update(field, value) {
     setValues((current) => ({ ...current, [field]: value }))
@@ -62,7 +67,7 @@ export default function AITransactionDialog({ onRegistered, onFallback, onClose 
       setError(err instanceof ApiError ? err.message : 'No se pudo interpretar el texto.')
     } finally {
       // También después de un error: un 429 cambia lo que queda por mostrar.
-      setUsage(getAIUsage(AI_USAGE_KINDS.transactionParse))
+      setUsage(getAIUsage())
       setBusy(false)
     }
   }
@@ -222,18 +227,37 @@ export default function AITransactionDialog({ onRegistered, onFallback, onClose 
                   />
                 )}
               </FormField>
+              {/* La categoría del gasto la resolvió el backend con reglas (sin otra llamada
+                  al modelo): se muestra siempre y se puede cambiar antes de confirmar. */}
               <FormField id="ai-category" label="Categoría" error={fieldErrors.category}>
-                {({ id, describedBy, invalid }) => (
-                  <input
-                    id={id}
-                    className="input"
-                    value={values.category}
-                    onChange={(event) => update('category', event.target.value)}
-                    aria-describedby={describedBy}
-                    aria-invalid={invalid}
-                    maxLength={60}
-                  />
-                )}
+                {({ id, describedBy, invalid }) =>
+                  values.type === 'expense' ? (
+                    <select
+                      id={id}
+                      className="input"
+                      value={values.category}
+                      onChange={(event) => update('category', event.target.value)}
+                      aria-describedby={describedBy}
+                      aria-invalid={invalid}
+                    >
+                      {EXPENSE_CATEGORIES.map((name) => (
+                        <option key={name} value={name}>
+                          {CATEGORY_LABELS[name]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id={id}
+                      className="input"
+                      value={values.category}
+                      onChange={(event) => update('category', event.target.value)}
+                      aria-describedby={describedBy}
+                      aria-invalid={invalid}
+                      maxLength={60}
+                    />
+                  )
+                }
               </FormField>
               <FormField id="ai-description" label="Descripción" error={fieldErrors.description}>
                 {({ id, describedBy, invalid }) => (

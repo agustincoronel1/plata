@@ -23,15 +23,16 @@ from app.services.ai_usage_service import AIUsageStatus
 
 LIMIT_HEADER = "X-AI-Daily-Limit"
 REMAINING_HEADER = "X-AI-Daily-Remaining"
-KIND_HEADER = "X-AI-Daily-Kind"
 # El umbral del aviso viaja con la respuesta para que el número viva en un solo lugar (la
 # configuración del backend) y el frontend no tenga que repetirlo.
 WARN_AT_HEADER = "X-AI-Daily-Warn-At"
+# Cuándo se renueva la cuota, en la zona del corte (offset explícito, no UTC).
+RESET_AT_HEADER = "X-AI-Daily-Reset-At"
 
 # Sin esto el navegador no deja leer las cabeceras desde otro origen: `Access-Control-
 # Allow-Origin` habilita la respuesta, pero solo los headers "seguros" quedan visibles
 # para JavaScript. Las propias van declaradas en `Access-Control-Expose-Headers`.
-EXPOSED_HEADERS = [LIMIT_HEADER, REMAINING_HEADER, KIND_HEADER, WARN_AT_HEADER]
+EXPOSED_HEADERS = [LIMIT_HEADER, REMAINING_HEADER, WARN_AT_HEADER, RESET_AT_HEADER]
 
 
 def with_usage[ModelT: BaseModel](payload: ModelT, status: AIUsageStatus | None) -> ModelT:
@@ -52,8 +53,8 @@ def apply_usage_headers_to_dict(headers: dict[str, str], status: AIUsageStatus) 
     """Misma información, sobre un dict. La usa el manejador del 429, que arma su respuesta."""
     headers[LIMIT_HEADER] = str(status.limit)
     headers[REMAINING_HEADER] = str(status.remaining)
-    headers[KIND_HEADER] = str(status.kind)
     headers[WARN_AT_HEADER] = str(settings.ai_usage_warning_threshold)
+    headers[RESET_AT_HEADER] = status.resets_at.isoformat()
 
 
 def apply_usage_headers(response: Response, status: AIUsageStatus | None) -> None:

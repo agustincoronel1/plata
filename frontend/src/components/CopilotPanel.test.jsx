@@ -133,6 +133,30 @@ describe('CopilotPanel', () => {
     expect(await screen.findByText(/Registré el gasto/i)).toBeInTheDocument()
   })
 
+  it('muestra la categoría del borrador antes de aprobar', async () => {
+    api.chatCopilot.mockResolvedValue(
+      makeChatResponse({
+        intent: 'create_transaction',
+        answer: 'Preparé esto para registrar…',
+        requires_approval: true,
+        pending_action: {
+          action_id: '55555555-5555-4555-8555-555555555555',
+          kind: 'create_transaction',
+          summary: 'gasto de $15.000 en transporte',
+          draft: { type: 'expense', amount: '15000.00', category: 'transporte' },
+        },
+      }),
+    )
+    const user = userEvent.setup()
+    render(<CopilotPanel />)
+
+    await user.type(screen.getByLabelText(/Escribile al copiloto/i), 'Gasté 15000 en nafta')
+    await user.click(screen.getByRole('button', { name: /Enviar/i }))
+
+    const aprobacion = (await screen.findByText(/Requiere tu aprobación/i)).closest('div')
+    expect(aprobacion).toHaveTextContent(/Categoría:\s*Transporte/i)
+  })
+
   it('rechazar una acción pendiente no registra nada y libera el chat', async () => {
     api.chatCopilot.mockResolvedValue(
       makeChatResponse({

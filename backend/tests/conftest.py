@@ -21,7 +21,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.constants import DEMO_USER_ID
 from app.core.database import engine, get_db
 from app.core.security import get_current_user
 from app.main import app
@@ -30,12 +29,15 @@ from app.schemas.auth import AuthenticatedUser
 
 API = "/api/v1"
 
-# Usuario autenticado por defecto en los tests. Es el mismo UUID del perfil demo: así los
-# tests que ya existían siguen describiendo el mismo escenario, y la fixture `db_session`
-# sigue partiendo de una base limpia. Verificar el JWT de verdad ya tiene sus propios
-# tests (test_auth_jwt.py); acá lo que se prueba es qué hace la API con la identidad ya
-# resuelta, así que la dependencia se sustituye en lugar de firmar tokens en cada test.
-TEST_USER_ID = DEMO_USER_ID
+# Usuario autenticado por defecto en los tests. Es un UUID de la suite y no una constante
+# de la aplicación: el backend no conoce ningún usuario fijo, así que los tests tampoco
+# importan uno. Coincide con el UUID que usa el seed de demostración a propósito, para que
+# `db_session` pueda dejar la base limpia si alguien sembró antes de correr los tests.
+#
+# Verificar el JWT de verdad ya tiene sus propios tests (test_auth_jwt.py); acá lo que se
+# prueba es qué hace la API con la identidad ya resuelta, así que la dependencia se
+# sustituye en lugar de firmar tokens en cada test.
+TEST_USER_ID = UUID("11111111-1111-4111-8111-111111111111")
 TEST_USER_EMAIL = "demo@plata.test"
 
 # Segundo usuario, para los tests de aislamiento entre cuentas.
@@ -76,9 +78,9 @@ requires_postgres = pytest.mark.skipif(
 
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
-    """Sesión transaccional aislada. Parte de una base sin el perfil demo.
+    """Sesión transaccional aislada. Parte de una base sin el perfil del usuario de test.
 
-    Borra el perfil demo dentro de la transacción externa (el ON DELETE CASCADE se lleva
+    Borra ese perfil dentro de la transacción externa (el ON DELETE CASCADE se lleva
     sus movimientos y compromisos) para que cada test arranque de un estado conocido e
     independiente del seed. Como todo cuelga de la transacción externa, el rollback final
     restaura la base intacta.
@@ -87,7 +89,7 @@ def db_session() -> Generator[Session, None, None]:
     transaction = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
 
-    existing = session.get(UserProfile, DEMO_USER_ID)
+    existing = session.get(UserProfile, TEST_USER_ID)
     if existing is not None:
         session.delete(existing)
         session.flush()

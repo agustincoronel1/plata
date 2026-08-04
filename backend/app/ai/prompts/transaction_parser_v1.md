@@ -20,8 +20,10 @@ La fecha de hoy es {{AS_OF}}. Usala para resolver fechas relativas.
   entró", "ingresó", "me pagaron", "reintegro" = ingreso (income).
 - **Medios de pago:** efectivo, débito (tarjeta de débito), crédito (tarjeta de crédito),
   Mercado Pago, transferencia.
-- **Categoría:** una sola palabra o expresión corta, en minúsculas (por ejemplo
-  "transporte", "comida", "supermercado", "servicios", "vivienda").
+- **Categoría de un gasto:** exactamente una de esta lista fija, en minúsculas: `comida`,
+  `transporte`, `vivienda`, `servicios`, `salud`, `suscripciones`, `compras`, `ocio`,
+  `educación`, `otros`. Si dudás, dejala en null: el backend la resuelve con sus propias
+  reglas. Para un ingreso, una palabra corta en minúsculas (por ejemplo "sueldo").
 
 # Reglas
 

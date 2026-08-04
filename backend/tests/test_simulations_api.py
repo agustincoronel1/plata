@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models import PurchaseSimulation, UserProfile
-from tests.conftest import API, requires_postgres
+from tests.conftest import API, TEST_USER_ID, requires_postgres
 
 pytestmark = requires_postgres
 
@@ -157,12 +157,10 @@ def test_listar_orden_descendente_por_created_at(
     client: TestClient, db_session: Session, make_profile: Callable[..., dict]
 ) -> None:
     make_profile()
-    from app.core.constants import DEMO_USER_ID
-
     now = datetime.now(UTC)
-    _insert_simulation(db_session, DEMO_USER_ID, "vieja", now - timedelta(hours=2))
-    _insert_simulation(db_session, DEMO_USER_ID, "media", now - timedelta(hours=1))
-    _insert_simulation(db_session, DEMO_USER_ID, "nueva", now)
+    _insert_simulation(db_session, TEST_USER_ID, "vieja", now - timedelta(hours=2))
+    _insert_simulation(db_session, TEST_USER_ID, "media", now - timedelta(hours=1))
+    _insert_simulation(db_session, TEST_USER_ID, "nueva", now)
 
     rows = client.get(f"{API}/simulations").json()
 
@@ -173,11 +171,9 @@ def test_listar_maximo_10(
     client: TestClient, db_session: Session, make_profile: Callable[..., dict]
 ) -> None:
     make_profile()
-    from app.core.constants import DEMO_USER_ID
-
     now = datetime.now(UTC)
     for i in range(11):
-        _insert_simulation(db_session, DEMO_USER_ID, f"sim-{i:02d}", now - timedelta(hours=i))
+        _insert_simulation(db_session, TEST_USER_ID, f"sim-{i:02d}", now - timedelta(hours=i))
 
     rows = client.get(f"{API}/simulations").json()
 
@@ -190,14 +186,12 @@ def test_listar_solo_perfil_demo(
     client: TestClient, db_session: Session, make_profile: Callable[..., dict]
 ) -> None:
     make_profile()
-    from app.core.constants import DEMO_USER_ID
-
     otro_id = UUID("55555555-5555-4555-8555-555555555555")
     db_session.add(UserProfile(id=otro_id, name="Otro", current_balance=Decimal("0")))
     db_session.flush()
 
     now = datetime.now(UTC)
-    _insert_simulation(db_session, DEMO_USER_ID, "mia", now)
+    _insert_simulation(db_session, TEST_USER_ID, "mia", now)
     _insert_simulation(db_session, otro_id, "ajena", now)
 
     rows = client.get(f"{API}/simulations").json()
