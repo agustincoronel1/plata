@@ -143,6 +143,18 @@ def test_compromiso_valido() -> None:
     assert commitment.is_recurring is True
 
 
+def test_compromiso_sin_categoria_se_clasifica_por_nombre() -> None:
+    commitment = CommitmentCreate(name="Internet", amount="30000", due_date=TODAY)
+
+    assert commitment.category == "servicios"
+
+
+def test_compromiso_sin_categoria_reconocida_cae_en_otros() -> None:
+    commitment = CommitmentCreate(name="Pago raro", amount="30000", due_date=TODAY)
+
+    assert commitment.category == "otros"
+
+
 def test_compromiso_no_expone_status_en_create() -> None:
     """El status no es parte del alta: siempre nace pending del lado del servidor."""
     assert "status" not in CommitmentCreate.model_fields

@@ -55,8 +55,10 @@ export function makeTransaction(overrides = {}) {
   return {
     id: 'tx-1',
     user_id: PROFILE.id,
+    commitment_id: null,
     type: 'expense',
     amount: '20000.00',
+    currency: 'ARS',
     category: 'comida',
     description: null,
     occurred_on: '2026-07-20',

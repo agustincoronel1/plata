@@ -92,11 +92,20 @@ def list_transactions(session: Session, user_id: UUID) -> list[Transaction]:
 
 
 def create_transaction_no_commit(
-    session: Session, user_id: UUID, payload: TransactionCreate
+    session: Session,
+    user_id: UUID,
+    payload: TransactionCreate,
+    *,
+    commitment_id: UUID | None = None,
 ) -> Transaction:
     """Crea el movimiento y aplica su efecto sobre el saldo sin cerrar la transacción."""
     profile = _lock_profile(session, user_id)
-    transaction = Transaction(user_id=user_id, **payload.model_dump())
+    transaction = Transaction(
+        user_id=user_id,
+        commitment_id=commitment_id,
+        currency=profile.currency,
+        **payload.model_dump(),
+    )
 
     profile.current_balance += _signed_effect(transaction.type, transaction.amount)
     session.add(transaction)
@@ -126,25 +135,8 @@ def update_transaction(
     Se revierte el efecto del movimiento anterior y se aplica el del actualizado. Cambiar
     un gasto por un ingreso, o el monto, recalcula el saldo correctamente.
     """
-    profile = _lock_profile(session, user_id)
-    transaction = _get_owned(session, user_id, transaction_id)
-
-    previous_effect = _signed_effect(transaction.type, transaction.amount)
-    changes = payload.model_dump(exclude_unset=True)
-
     try:
-        for field, value in changes.items():
-            setattr(transaction, field, value)
-        # Un gasto editado vuelve a pasar por las reglas: una categoría válida se respeta y
-        # una fuera del vocabulario (o heredada del historial) se mapea al vocabulario fijo.
-        if transaction.type is TransactionType.EXPENSE:
-            transaction.category = resolve_expense_category(
-                transaction.category, transaction.description
-            )
-        new_effect = _signed_effect(transaction.type, transaction.amount)
-        profile.current_balance += new_effect - previous_effect
-        session.flush()
-        _index(session, transaction)
+        transaction = update_transaction_no_commit(session, user_id, transaction_id, payload)
         session.commit()
     except Exception:
         session.rollback()
@@ -154,15 +146,46 @@ def update_transaction(
     return transaction
 
 
-def delete_transaction(session: Session, user_id: UUID, transaction_id: UUID) -> None:
-    """Elimina un movimiento y revierte su efecto sobre el saldo, en un único commit."""
+def update_transaction_no_commit(
+    session: Session, user_id: UUID, transaction_id: UUID, payload: TransactionUpdate
+) -> Transaction:
+    """Edita un movimiento y ajusta el saldo sin cerrar la transacción."""
     profile = _lock_profile(session, user_id)
     transaction = _get_owned(session, user_id, transaction_id)
 
+    previous_effect = _signed_effect(transaction.type, transaction.amount)
+    changes = payload.model_dump(exclude_unset=True)
+
+    for field, value in changes.items():
+        setattr(transaction, field, value)
+    # Un gasto editado vuelve a pasar por las reglas: una categoría válida se respeta y
+    # una fuera del vocabulario (o heredada del historial) se mapea al vocabulario fijo.
+    if transaction.type is TransactionType.EXPENSE:
+        transaction.category = resolve_expense_category(
+            transaction.category, transaction.description
+        )
+    new_effect = _signed_effect(transaction.type, transaction.amount)
+    profile.current_balance += new_effect - previous_effect
+    session.flush()
+    _index(session, transaction)
+    return transaction
+
+
+def delete_transaction(session: Session, user_id: UUID, transaction_id: UUID) -> None:
+    """Elimina un movimiento y revierte su efecto sobre el saldo, en un único commit."""
     try:
-        profile.current_balance -= _signed_effect(transaction.type, transaction.amount)
-        session.delete(transaction)
+        delete_transaction_no_commit(session, user_id, transaction_id)
         session.commit()
     except Exception:
         session.rollback()
         raise
+
+
+def delete_transaction_no_commit(session: Session, user_id: UUID, transaction_id: UUID) -> None:
+    """Elimina un movimiento y revierte su efecto sobre el saldo sin cerrar la transacción."""
+    profile = _lock_profile(session, user_id)
+    transaction = _get_owned(session, user_id, transaction_id)
+
+    profile.current_balance -= _signed_effect(transaction.type, transaction.amount)
+    session.delete(transaction)
+    session.flush()

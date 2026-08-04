@@ -88,8 +88,10 @@ class TransactionResponse(BaseModel):
 
     id: UUID
     user_id: UUID
+    commitment_id: UUID | None = None
     type: TransactionType
     amount: PositiveMoney
+    currency: str
     category: str
     description: str | None
     occurred_on: date

@@ -109,7 +109,7 @@ class CreateCommitmentArgs(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
     due_date: date
-    category: str = Field(min_length=1, max_length=60)
+    category: str | None = Field(default=None, max_length=60)
 
 
 def _fmt_money(value: Decimal) -> str:
@@ -308,13 +308,16 @@ def _create_transaction_draft(ctx: ToolContext, args: CreateTransactionArgs) -> 
 
 
 def _create_commitment_draft(ctx: ToolContext, args: CreateCommitmentArgs) -> dict[str, Any]:
+    from app.services.categorizer import resolve_expense_category
+
+    category = resolve_expense_category(args.category, args.name)
     payload = {
         "kind": "create_commitment",
         "fields": {
             "name": args.name,
             "amount": str(args.amount),
             "due_date": args.due_date.isoformat(),
-            "category": args.category.lower(),
+            "category": category,
         },
     }
     draft = ctx.draft_store.create(payload=payload, source_text=args.name, user_id=ctx.user_id)

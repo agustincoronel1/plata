@@ -250,7 +250,20 @@ export default function DashboardPage({ onSignOut }) {
     setFeedback(null)
     try {
       await updateCommitment(commitment.id, { status: nextStatus })
-      await refreshCommitments()
+      if (nextStatus === 'paid' || commitment.status === 'paid') {
+        const [profileResult, txResult, cmResult, summaryResult] = await Promise.allSettled([
+          getProfile(),
+          getTransactions(),
+          getCommitments(),
+          getDashboardSummary(),
+        ])
+        if (profileResult.status === 'fulfilled') setProfile(profileResult.value)
+        if (txResult.status === 'fulfilled') setTransactions(txResult.value)
+        if (cmResult.status === 'fulfilled') setCommitments(cmResult.value)
+        if (summaryResult.status === 'fulfilled') setSummary(summaryResult.value)
+      } else {
+        await refreshCommitments()
+      }
       const labels = { paid: 'pagado', cancelled: 'cancelado', pending: 'pendiente' }
       setFeedback({ type: 'success', text: `Compromiso marcado como ${labels[nextStatus]}.` })
     } catch (error) {

@@ -1,7 +1,7 @@
 """Endpoints de compromisos: /api/v1/commitments.
 
-Marcar un compromiso como pagado o cancelado es un PATCH de su status. No crea ninguna
-transacción ni modifica el saldo: ver la nota del commitment_service.
+Marcar un compromiso como pagado es un PATCH de su status y crea el gasto real asociado
+del lado del backend, en la misma transacción de base.
 
 Todos exigen sesión y operan sobre los compromisos de quien hizo la petición, según el
 `sub` del JWT verificado. Un compromiso ajeno responde 404, igual que uno inexistente.
@@ -50,7 +50,7 @@ def update_commitment(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> CommitmentResponse:
-    """Edita un compromiso propio, incluido su status. No toca el saldo. 404 si no existe."""
+    """Edita un compromiso propio, incluido su status. 404 si no existe."""
     return commitment_service.update_commitment(
         db, user_id=current_user.id, commitment_id=commitment_id, payload=payload
     )

@@ -180,18 +180,36 @@ describe('DashboardPage', () => {
     await userEvent.type(screen.getByLabelText(/Nombre/i), 'Alquiler')
     await userEvent.type(screen.getByLabelText(/Monto/i), '250000')
     await userEvent.type(screen.getByLabelText(/Fecha de vencimiento/i), '2026-08-05')
-    await userEvent.type(screen.getByLabelText(/Categoría/i), 'vivienda')
+    await userEvent.selectOptions(screen.getByLabelText(/Categoría/i), 'vivienda')
     await userEvent.click(screen.getByRole('button', { name: /Guardar compromiso/i }))
 
     expect(await screen.findByText('Alquiler')).toBeInTheDocument()
     expect(api.createCommitment).toHaveBeenCalledTimes(1)
   })
 
-  it('cambia el estado de un compromiso a pagado', async () => {
-    api.getProfile.mockResolvedValue(PROFILE)
+  it('cambia el estado de un compromiso a pagado y refresca datos afectados', async () => {
+    const generatedTx = makeTransaction({
+      id: 'tx-paid',
+      amount: '250000.00',
+      category: 'vivienda',
+      description: 'Alquiler',
+      commitment_id: 'cm-1',
+    })
+    api.getProfile
+      .mockResolvedValueOnce(PROFILE)
+      .mockResolvedValueOnce({ ...PROFILE, current_balance: '370000.00' })
+    api.getTransactions.mockResolvedValueOnce([]).mockResolvedValueOnce([generatedTx])
     api.getCommitments
       .mockResolvedValueOnce([makeCommitment({ status: 'pending' })])
       .mockResolvedValueOnce([makeCommitment({ status: 'paid' })])
+    api.getDashboardSummary
+      .mockResolvedValueOnce(SUMMARY)
+      .mockResolvedValueOnce({
+        ...SUMMARY,
+        current_balance: '370000.00',
+        pending_commitments_amount: '0.00',
+        month_expenses_total: '250000.00',
+      })
     api.updateCommitment.mockResolvedValue(makeCommitment({ status: 'paid' }))
 
     render(<DashboardPage />)
@@ -201,7 +219,10 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText(/marcado como pagado/i)).toBeInTheDocument()
     expect(api.updateCommitment).toHaveBeenCalledWith('cm-1', { status: 'paid' })
-    // El saldo no cambia: marcar pagado no toca el dinero.
-    expect(screen.getAllByText(/620\.000/).length).toBeGreaterThan(0)
+    expect(api.getProfile).toHaveBeenCalledTimes(2)
+    expect(api.getTransactions).toHaveBeenCalledTimes(2)
+    expect(api.getCommitments).toHaveBeenCalledTimes(2)
+    expect(api.getDashboardSummary).toHaveBeenCalledTimes(2)
+    expect((await screen.findAllByText(/Alquiler/)).length).toBeGreaterThan(1)
   })
 })

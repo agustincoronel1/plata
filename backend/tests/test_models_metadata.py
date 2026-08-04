@@ -66,13 +66,33 @@ def test_ninguna_columna_usa_float() -> None:
 
 @pytest.mark.parametrize("table_name", ["transactions", "commitments", "purchase_simulations"])
 def test_foreign_key_a_user_profiles_con_cascade(table_name: str) -> None:
-    foreign_keys = list(TABLES[table_name].foreign_keys)
+    foreign_keys = [fk for fk in TABLES[table_name].foreign_keys if fk.parent.name == "user_id"]
 
     assert len(foreign_keys) == 1
     fk = foreign_keys[0]
     assert fk.column is TABLES["user_profiles"].columns["id"]
     assert fk.parent.name == "user_id"
     assert fk.ondelete == "CASCADE"
+
+
+def test_transaction_commitment_id_es_nullable_unico_y_set_null() -> None:
+    column = TABLES["transactions"].columns["commitment_id"]
+    foreign_key = next(iter(column.foreign_keys))
+
+    assert isinstance(column.type, Uuid)
+    assert column.nullable is True
+    assert column.unique is True
+    assert foreign_key.column is TABLES["commitments"].columns["id"]
+    assert foreign_key.ondelete == "SET NULL"
+
+
+def test_transaction_currency_tiene_default_ars() -> None:
+    column = TABLES["transactions"].columns["currency"]
+
+    assert str(column.type.length) == "3"
+    assert column.nullable is False
+    assert column.default.arg == "ARS"
+    assert str(column.server_default.arg) == "'ARS'"
 
 
 def _check_constraint_names(table_name: str) -> set[str]:
@@ -95,7 +115,10 @@ def _check_constraint_names(table_name: str) -> set[str]:
                 "ck_user_profiles_currency_uppercase",
             },
         ),
-        ("transactions", {"ck_transactions_amount_positive"}),
+        (
+            "transactions",
+            {"ck_transactions_amount_positive", "ck_transactions_currency_uppercase"},
+        ),
         ("commitments", {"ck_commitments_amount_positive"}),
         (
             "purchase_simulations",

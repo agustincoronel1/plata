@@ -9,6 +9,7 @@ from typing import Any
 
 from app.ai.agent.brain import extract_amount
 from app.ai.agent.schemas import AgentIntent
+from app.services.categorizer import resolve_expense_category
 from app.services.financial_engine import add_months
 
 _MONTHS = {
@@ -152,7 +153,7 @@ def _commitment_params(
         "name": fields["name"],
         "amount": str(fields["amount"]),
         "due_date": fields["due_date"],
-        "category": fields["category"],
+        "category": resolve_expense_category(fields.get("category"), fields["name"]),
     }
 
 
@@ -194,11 +195,9 @@ def extract_commitment_fields(
     if category:
         fields["category"] = category
 
-    missing = [
-        field
-        for field in ("name", "amount", "due_date", "category")
-        if fields.get(field) in (None, "")
-    ]
+    if fields.get("name"):
+        fields["category"] = resolve_expense_category(fields.get("category"), fields["name"])
+    missing = [field for field in ("name", "amount", "due_date") if fields.get(field) in (None, "")]
     fields["missing_fields"] = missing
     fields["source_messages"] = source[-6:]
     return fields

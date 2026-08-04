@@ -53,6 +53,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.exceptions import AIDailyLimitReachedError, AIProviderUnavailableError
 from app.core.config import settings
+from app.core.timezone import app_today
 from app.models.ai_daily_usage import AIDailyUsage
 
 # Valor único de la columna `kind`. No es una dimensión del contador: está fijo para que la
@@ -115,10 +116,7 @@ class AIUsageStatus:
 
 def usage_day(now: datetime | None = None) -> date:
     """Día calendario en la zona configurada. Es la clave del contador y define el reinicio."""
-    moment = now or datetime.now(UTC)
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=UTC)
-    return moment.astimezone(ZoneInfo(usage_timezone())).date()
+    return app_today(now)
 
 
 def get_status(session: Session, user_id: UUID, *, day: date | None = None) -> AIUsageStatus:

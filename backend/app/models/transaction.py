@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, Date, Enum, ForeignKey, Index, Numeric, String, Uuid
+from sqlalchemy import CheckConstraint, Date, Enum, ForeignKey, Index, Numeric, String, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -13,6 +13,7 @@ from app.models.enums import TransactionType
 from app.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.commitment import Commitment
     from app.models.user_profile import UserProfile
 
 MONEY = Numeric(14, 2)
@@ -24,6 +25,7 @@ class Transaction(TimestampMixin, Base):
     __tablename__ = "transactions"
     __table_args__ = (
         CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint("currency = upper(currency)", name="currency_uppercase"),
         # El signo va en `type`, no en `amount`: así el monto siempre es positivo y
         # las sumas por tipo no dependen de convenciones de signo.
         Index("ix_transactions_user_id_occurred_on", "user_id", "occurred_on"),
@@ -32,6 +34,9 @@ class Transaction(TimestampMixin, Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    commitment_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("commitments.id", ondelete="SET NULL"), nullable=True, unique=True
     )
 
     type: Mapped[TransactionType] = mapped_column(
@@ -46,9 +51,13 @@ class Transaction(TimestampMixin, Base):
         nullable=False,
     )
     amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, default="ARS", server_default=text("'ARS'")
+    )
     category: Mapped[str] = mapped_column(String(60), nullable=False)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
     payment_method: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
     user: Mapped[UserProfile] = relationship(back_populates="transactions")
+    commitment: Mapped[Commitment | None] = relationship(back_populates="paid_transaction")

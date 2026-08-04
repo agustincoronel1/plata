@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import CommitmentStatus
-from app.schemas.common import Category, Name, NonEmptyUpdate, PositiveMoney
+from app.schemas.common import Name, NonEmptyUpdate, PositiveMoney
+from app.services.categorizer import resolve_expense_category
+
+OptionalCategory = Annotated[str | None, Field(default=None, max_length=60)]
 
 
 class CommitmentCreate(BaseModel):
@@ -24,8 +28,13 @@ class CommitmentCreate(BaseModel):
     name: Name
     amount: PositiveMoney
     due_date: date
-    category: Category
+    category: OptionalCategory = None
     is_recurring: bool = False
+
+    @model_validator(mode="after")
+    def _categorize(self) -> CommitmentCreate:
+        self.category = resolve_expense_category(self.category, self.name)
+        return self
 
 
 class CommitmentUpdate(NonEmptyUpdate):
@@ -40,7 +49,7 @@ class CommitmentUpdate(NonEmptyUpdate):
     name: Name | None = None
     amount: PositiveMoney | None = None
     due_date: date | None = None
-    category: Category | None = None
+    category: OptionalCategory = None
     status: CommitmentStatus | None = None
     is_recurring: bool | None = None
 

@@ -1,5 +1,6 @@
 import EmptyState from './EmptyState'
 import Icon from './Icon'
+import { categoryLabel } from '../services/categories'
 import { formatDate, formatMoney } from '../services/format'
 
 const STATUS_LABELS = {
@@ -64,7 +65,7 @@ export default function CommitmentList({
               <div className="row__body">
                 <p className="row__title">{cm.name}</p>
                 <p className="row__meta">
-                  Vence {formatDate(cm.due_date)} · {cm.category}
+                  Vence {formatDate(cm.due_date)} · {categoryLabel(cm.category)}
                 </p>
                 <div className="row__tags">
                   <span className={`tag tag--${cm.status}`}>{STATUS_LABELS[cm.status]}</span>

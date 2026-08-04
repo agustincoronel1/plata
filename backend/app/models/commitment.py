@@ -24,6 +24,7 @@ from app.models.enums import CommitmentStatus
 from app.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.transaction import Transaction
     from app.models.user_profile import UserProfile
 
 MONEY = Numeric(14, 2)
@@ -47,7 +48,9 @@ class Commitment(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
-    category: Mapped[str] = mapped_column(String(60), nullable=False)
+    category: Mapped[str] = mapped_column(
+        String(60), nullable=False, server_default=text("'otros'")
+    )
     status: Mapped[CommitmentStatus] = mapped_column(
         Enum(
             CommitmentStatus,
@@ -68,3 +71,6 @@ class Commitment(TimestampMixin, Base):
     )
 
     user: Mapped[UserProfile] = relationship(back_populates="commitments")
+    paid_transaction: Mapped[Transaction | None] = relationship(
+        back_populates="commitment", uselist=False
+    )

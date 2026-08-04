@@ -1,10 +1,8 @@
 """Lógica de compromisos (pagos futuros o pendientes).
 
-Decisión de producto documentada para que no haya ambigüedad: los compromisos NO tocan
-current_balance. Crearlos, editarlos, marcarlos pagados o cancelarlos no genera ninguna
-transacción ni modifica el saldo. El efecto de los compromisos sobre el dinero disponible
-lo calcula el motor financiero. Por eso este servicio no bloquea ni lee el perfil para
-nada más que verificar que exista al crear.
+Un compromiso pendiente no toca el saldo: el motor financiero lo descuenta del disponible.
+Cuando pasa realmente a pagado, se crea un gasto real vinculado y recién ahí se ajusta el
+saldo. Volver desde pagado a otro estado elimina solo ese gasto autogenerado.
 
 `user_id` es obligatorio y sin valor por defecto: las lecturas y escrituras quedan
 acotadas al usuario dueño. En la API sale siempre de `current_user.id`, es decir del
@@ -18,8 +16,12 @@ from uuid import UUID
 from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
-from app.models import Commitment, CommitmentStatus
+from app.core.timezone import app_today
+from app.models import Commitment, CommitmentStatus, Transaction, TransactionType
 from app.schemas.commitment import CommitmentCreate, CommitmentUpdate
+from app.schemas.transaction import TransactionCreate, TransactionUpdate
+from app.services import transaction_service
+from app.services.categorizer import resolve_expense_category
 from app.services.exceptions import NotFoundError
 from app.services.profile_service import PROFILE_NOT_FOUND, get_profile_or_none
 
@@ -49,6 +51,90 @@ def _get_owned(session: Session, user_id: UUID, commitment_id: UUID) -> Commitme
     if commitment is None:
         raise NotFoundError(COMMITMENT_NOT_FOUND)
     return commitment
+
+
+def _get_owned_for_update(session: Session, user_id: UUID, commitment_id: UUID) -> Commitment:
+    commitment = session.execute(
+        select(Commitment)
+        .where(
+            Commitment.id == commitment_id,
+            Commitment.user_id == user_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if commitment is None:
+        raise NotFoundError(COMMITMENT_NOT_FOUND)
+    return commitment
+
+
+def _generated_transaction(
+    session: Session, user_id: UUID, commitment_id: UUID
+) -> Transaction | None:
+    return session.execute(
+        select(Transaction).where(
+            Transaction.user_id == user_id,
+            Transaction.commitment_id == commitment_id,
+        )
+    ).scalar_one_or_none()
+
+
+def _payment_payload(commitment: Commitment) -> TransactionCreate:
+    return TransactionCreate(
+        type=TransactionType.EXPENSE,
+        amount=commitment.amount,
+        category=commitment.category,
+        description=commitment.name,
+        occurred_on=app_today(),
+    )
+
+
+def _create_payment_transaction(session: Session, user_id: UUID, commitment: Commitment) -> None:
+    if _generated_transaction(session, user_id, commitment.id) is not None:
+        return
+    transaction_service.create_transaction_no_commit(
+        session,
+        user_id,
+        _payment_payload(commitment),
+        commitment_id=commitment.id,
+    )
+
+
+def _delete_payment_transaction(session: Session, user_id: UUID, commitment: Commitment) -> None:
+    transaction = _generated_transaction(session, user_id, commitment.id)
+    if transaction is None:
+        return
+    transaction_service.delete_transaction_no_commit(session, user_id, transaction.id)
+
+
+def _sync_payment_transaction(session: Session, user_id: UUID, commitment: Commitment) -> None:
+    transaction = _generated_transaction(session, user_id, commitment.id)
+    if transaction is None:
+        return
+    transaction_service.update_transaction_no_commit(
+        session,
+        user_id,
+        transaction.id,
+        TransactionUpdate(
+            type=TransactionType.EXPENSE,
+            amount=commitment.amount,
+            category=commitment.category,
+            description=commitment.name,
+        ),
+    )
+
+
+def _resolved_update_changes(
+    commitment: Commitment, changes: dict[str, object]
+) -> dict[str, object]:
+    if "category" not in changes:
+        return changes
+    raw_category = changes["category"]
+    name = changes.get("name", commitment.name)
+    changes["category"] = resolve_expense_category(
+        str(raw_category) if raw_category is not None else None,
+        str(name) if name is not None else commitment.name,
+    )
+    return changes
 
 
 def list_commitments(session: Session, user_id: UUID) -> list[Commitment]:
@@ -101,15 +187,34 @@ def update_commitment(
 ) -> Commitment:
     """Edita un compromiso, incluido su status (pending / paid / cancelled).
 
-    Marcar paid o cancelled es solo un cambio de estado: no crea transacción ni modifica
-    el saldo.
+    El paso no pagado -> paid crea un gasto real vinculado. La reversión desde paid borra
+    solo ese gasto autogenerado. Editar un compromiso ya pagado sincroniza su movimiento.
     """
-    commitment = _get_owned(session, user_id, commitment_id)
-    changes = payload.model_dump(exclude_unset=True)
+    commitment = _get_owned_for_update(session, user_id, commitment_id)
+    changes = _resolved_update_changes(commitment, payload.model_dump(exclude_unset=True))
+    previous_status = commitment.status
 
     try:
         for field, value in changes.items():
             setattr(commitment, field, value)
+        session.flush()
+
+        became_paid = (
+            previous_status is not CommitmentStatus.PAID
+            and commitment.status is CommitmentStatus.PAID
+        )
+        left_paid = (
+            previous_status is CommitmentStatus.PAID
+            and commitment.status is not CommitmentStatus.PAID
+        )
+
+        if became_paid:
+            _create_payment_transaction(session, user_id, commitment)
+        elif left_paid:
+            _delete_payment_transaction(session, user_id, commitment)
+        elif commitment.status is CommitmentStatus.PAID:
+            _sync_payment_transaction(session, user_id, commitment)
+
         session.commit()
     except Exception:
         session.rollback()
