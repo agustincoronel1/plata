@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     # tiempo que tarda /health/db en devolver 503 con la base caída.
     database_url: str = "postgresql+psycopg://plata:change_me@127.0.0.1:5432/plata"
 
+    # Zona horaria de negocio: define qué día es "hoy" para el dinero (la fecha de un
+    # movimiento, la de un compromiso pagado). No depende de la zona del servidor: Render
+    # corre en UTC y un gasto de las 22:00 en Argentina pertenece a ese día, no al
+    # siguiente. Es general de la aplicación y no tiene nada que ver con la cuota de IA,
+    # que lleva su propia `ai_usage_timezone`.
+    app_timezone: str = "America/Argentina/Buenos_Aires"
+
     # --- IA ---
     # El proveedor por defecto es "mock": Plata arranca y funciona sin API key. Un proveedor
     # real mal configurado no se valida acá sino al ejecutar una operación de IA, para que

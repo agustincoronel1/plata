@@ -11,7 +11,7 @@ from logging.config import fileConfig
 import app.models  # noqa: F401
 from alembic import context
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import Base, engine, include_object
 
 config = context.config
 
@@ -19,19 +19,6 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-
-_EXTERNAL_TABLES = {
-    "checkpoint_migrations",
-    "checkpoints",
-    "checkpoint_blobs",
-    "checkpoint_writes",
-}
-
-
-def include_object(object_, name, type_, reflected, compare_to) -> bool:
-    if type_ == "table" and name in _EXTERNAL_TABLES:
-        return False
-    return True
 
 
 def run_migrations_offline() -> None:

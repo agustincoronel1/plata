@@ -225,4 +225,24 @@ describe('DashboardPage', () => {
     expect(api.getDashboardSummary).toHaveBeenCalledTimes(2)
     expect((await screen.findAllByText(/Alquiler/)).length).toBeGreaterThan(1)
   })
+
+  it('ante un 500 al marcar pagado muestra el error y no simula que salió bien', async () => {
+    // El backend respondía 500 cuando corría con la migración de compromisos sin aplicar.
+    // La UI no debe mostrar "marcado como pagado" ni recargar datos como si hubiera pasado.
+    api.getProfile.mockResolvedValue(PROFILE)
+    api.getCommitments.mockResolvedValue([makeCommitment({ status: 'pending' })])
+    api.updateCommitment.mockRejectedValue(
+      new ApiError('Ocurrió un error inesperado. Intentá de nuevo.', { status: 500 })
+    )
+
+    render(<DashboardPage />)
+    await ready()
+
+    await userEvent.click(screen.getByRole('button', { name: /Marcar Alquiler como pagado/i }))
+
+    expect(await screen.findByText(/Ocurrió un error inesperado/i)).toBeInTheDocument()
+    expect(screen.queryByText(/marcado como pagado/i)).not.toBeInTheDocument()
+    expect(api.getTransactions).toHaveBeenCalledTimes(1)
+    expect(api.getDashboardSummary).toHaveBeenCalledTimes(1)
+  })
 })

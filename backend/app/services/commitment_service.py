@@ -27,6 +27,11 @@ from app.services.profile_service import PROFILE_NOT_FOUND, get_profile_or_none
 
 COMMITMENT_NOT_FOUND = "Compromiso no encontrado"
 
+# Campos del compromiso que se reflejan en su gasto autogenerado. Editar cualquier otro
+# (due_date, is_recurring) no toca el movimiento: reescribirlo sin necesidad lo re-indexa
+# en el RAG y ensucia `updated_at` sin que haya cambiado nada del dinero.
+_SYNCED_FIELDS = frozenset({"name", "amount", "category"})
+
 # Orden de presentación: primero lo que hay que pagar (pending), después lo resuelto.
 _STATUS_ORDER = case(
     (Commitment.status == CommitmentStatus.PENDING, 0),
@@ -107,6 +112,12 @@ def _delete_payment_transaction(session: Session, user_id: UUID, commitment: Com
 
 
 def _sync_payment_transaction(session: Session, user_id: UUID, commitment: Commitment) -> None:
+    """Copia al gasto autogenerado lo que se editó del compromiso ya pagado.
+
+    La política es explícita: el movimiento de un compromiso pagado lo manda el
+    compromiso. No se crea uno nuevo ni se toca ningún movimiento manual (el vínculo es
+    `commitment_id`, nunca una coincidencia de monto o texto).
+    """
     transaction = _generated_transaction(session, user_id, commitment.id)
     if transaction is None:
         return
@@ -115,7 +126,6 @@ def _sync_payment_transaction(session: Session, user_id: UUID, commitment: Commi
         user_id,
         transaction.id,
         TransactionUpdate(
-            type=TransactionType.EXPENSE,
             amount=commitment.amount,
             category=commitment.category,
             description=commitment.name,
@@ -212,7 +222,7 @@ def update_commitment(
             _create_payment_transaction(session, user_id, commitment)
         elif left_paid:
             _delete_payment_transaction(session, user_id, commitment)
-        elif commitment.status is CommitmentStatus.PAID:
+        elif commitment.status is CommitmentStatus.PAID and not _SYNCED_FIELDS.isdisjoint(changes):
             _sync_payment_transaction(session, user_id, commitment)
 
         session.commit()

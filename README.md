@@ -298,6 +298,30 @@ información se carga sola, sin recargar la página.
 Lo que **no** pasa por ahí: un 401 es sesión vencida y lo resuelve el flujo de siempre, un
 429 muestra el límite diario y un 500 conserva su error genérico.
 
+## Despliegue
+
+FastAPI **no** ejecuta migraciones al arrancar, ni en desarrollo ni en producción. Render
+publica el código nuevo apenas se hace push, así que la migración va **antes** que el
+deploy: si sale después, queda una ventana con código nuevo sobre un esquema viejo y cada
+endpoint que use una columna nueva responde 500.
+
+Orden, con `DATABASE_URL` apuntando a la base de Supabase de producción:
+
+```powershell
+cd backend
+python -m alembic current    # dónde está la base
+python -m alembic heads      # dónde está el repo: tiene que haber una sola head
+python -m alembic upgrade head
+```
+
+Recién entonces se despliega el backend, y al final el frontend. Las migraciones de Plata
+son aditivas (columnas nuevas con default), así que el código viejo sigue funcionando
+contra el esquema nuevo mientras dura el deploy.
+
+`tests/test_alembic_migrations.py` verifica lo mismo contra la base a la que apunte
+`DATABASE_URL`: que haya una sola head, que la base esté en esa head y que el esquema
+coincida con los modelos.
+
 ## Tests y calidad
 
 ```powershell

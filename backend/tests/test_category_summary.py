@@ -5,7 +5,7 @@ Dos niveles: el armado del top 5 + "otros" (puro, sin base) y el endpoint comple
 """
 
 from collections.abc import Callable, Generator
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.ai.gateway import AIGateway, get_ai_gateway
 from app.ai.providers.mock import MockAIProvider
+from app.core.timezone import app_today
 from app.main import app
 from app.services.dashboard_service import build_category_summary
 from app.services.draft_store import InMemoryDraftStore, get_draft_store
@@ -24,7 +25,7 @@ from tests.conftest import (
     requires_postgres,
 )
 
-TODAY = date.today()
+TODAY = app_today()
 MONTH_START = TODAY.replace(day=1)
 
 

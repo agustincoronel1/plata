@@ -5,7 +5,7 @@ todo se revierte al terminar.
 """
 
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.timezone import app_today
 from app.models import Transaction, TransactionType, UserProfile
 from app.schemas.transaction import TransactionCreate
 from app.services import transaction_service
@@ -22,7 +23,7 @@ from tests.conftest import API, TEST_USER_ID, requires_postgres
 
 pytestmark = requires_postgres
 
-TODAY = date.today()
+TODAY = app_today()
 
 
 def _expense(amount: str, **extra: object) -> dict[str, object]:

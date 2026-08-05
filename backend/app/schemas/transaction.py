@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.core.timezone import app_today
 from app.models.enums import TransactionType
 from app.schemas.common import Category, NonEmptyUpdate, PositiveMoney, empty_to_none
 from app.services.categorizer import OTHER_CATEGORY, resolve_expense_category
@@ -31,8 +32,14 @@ def _resolve_category(
 
 
 def _no_future(value: date) -> date:
-    """Un movimiento ya ocurrió: su fecha no puede estar en el futuro."""
-    if value > date.today():
+    """Un movimiento ya ocurrió: su fecha no puede estar en el futuro.
+
+    "Hoy" es el día de Argentina, no el del servidor: Render corre en UTC y adelanta el
+    calendario tres horas. Con `date.today()` acá, un gasto de las 22:00 quedaría fechado
+    al día siguiente y la fecha de un pago calculada en hora argentina podría verse como
+    futura desde el servidor.
+    """
+    if value > app_today():
         raise ValueError("La fecha del movimiento no puede ser futura.")
     return value
 
@@ -46,7 +53,7 @@ class TransactionCreate(BaseModel):
     amount: PositiveMoney
     category: OptionalCategory = None
     description: str | None = Field(default=None, max_length=255)
-    occurred_on: date = Field(default_factory=date.today)
+    occurred_on: date = Field(default_factory=app_today)
     payment_method: str | None = Field(default=None, max_length=60)
 
     _clean_description = field_validator("description")(empty_to_none)

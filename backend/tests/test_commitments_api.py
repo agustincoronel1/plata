@@ -24,7 +24,7 @@ from tests.conftest import API, OTHER_USER_ID, TEST_USER_ID, requires_postgres
 
 pytestmark = requires_postgres
 
-TODAY = date.today()
+TODAY = app_today()
 
 
 def _commitment(name: str, amount: str, due_in_days: int, **extra: object) -> dict[str, object]:
@@ -273,6 +273,72 @@ def test_volver_a_marcar_pagado_no_duplica_movimiento(
     assert _balance(client) == Decimal("370000.00")
 
 
+def test_pago_usa_la_moneda_del_perfil(
+    client: TestClient, db_session: Session, make_profile: Callable[..., dict]
+) -> None:
+    """`currency` sale del perfil, no de una constante.
+
+    Hoy la API solo acepta ARS al guardar el perfil, así que la moneda se cambia en la
+    base: lo que se prueba es que el gasto la lee del perfil y no la tiene escrita a mano.
+    Nunca puede quedar NULL, la columna no lo admite.
+    """
+    make_profile()
+    profile = db_session.get(UserProfile, TEST_USER_ID)
+    profile.currency = "USD"
+    db_session.flush()
+    created = client.post(f"{API}/commitments", json=_commitment("Alquiler", "250000.00", 5)).json()
+
+    client.patch(f"{API}/commitments/{created['id']}", json={"status": "paid"})
+
+    [transaction] = _transactions(client)
+    assert transaction["currency"] == "USD"
+
+
+def test_editar_compromiso_pagado_sincroniza_su_gasto_sin_duplicar(
+    client: TestClient, make_profile: Callable[..., dict]
+) -> None:
+    """Política explícita: el gasto autogenerado lo manda el compromiso mientras siga pagado."""
+    make_profile()
+    created = client.post(f"{API}/commitments", json=_commitment("Alquiler", "250000.00", 5)).json()
+    client.patch(f"{API}/commitments/{created['id']}", json={"status": "paid"})
+    [original] = _transactions(client)
+
+    response = client.patch(
+        f"{API}/commitments/{created['id']}",
+        json={"name": "Alquiler nuevo", "amount": "300000.00", "category": "vivienda"},
+    )
+
+    assert response.status_code == 200
+    transactions = _transactions(client)
+    assert len(transactions) == 1
+    assert transactions[0]["id"] == original["id"]
+    assert transactions[0]["description"] == "Alquiler nuevo"
+    assert transactions[0]["amount"] == "300000.00"
+    # El saldo sigue la diferencia, no se resta dos veces.
+    assert _balance(client) == Decimal("320000.00")
+
+
+def test_editar_solo_el_vencimiento_de_un_compromiso_pagado_no_reescribe_el_movimiento(
+    client: TestClient, make_profile: Callable[..., dict]
+) -> None:
+    """Solo name/amount/category se reflejan en el gasto. Lo demás no lo toca."""
+    make_profile()
+    created = client.post(f"{API}/commitments", json=_commitment("Alquiler", "250000.00", 5)).json()
+    client.patch(f"{API}/commitments/{created['id']}", json={"status": "paid"})
+    [generated] = _transactions(client)
+    client.patch(f"{API}/transactions/{generated['id']}", json={"description": "Pagado a mano"})
+
+    response = client.patch(
+        f"{API}/commitments/{created['id']}",
+        json={"due_date": str(TODAY + timedelta(days=30))},
+    )
+
+    assert response.status_code == 200
+    [transaction] = _transactions(client)
+    assert transaction["description"] == "Pagado a mano"
+    assert _balance(client) == Decimal("370000.00")
+
+
 def test_marcar_compromiso_cancelado_no_modifica_el_saldo(
     client: TestClient, make_profile: Callable[..., dict]
 ) -> None:
@@ -387,7 +453,7 @@ def test_error_creando_movimiento_deja_compromiso_pendiente(
     except SQLAlchemyError:
         pass
     else:
-        raise AssertionError("La falla simulada debiÃ³ propagarse")
+        raise AssertionError("La falla simulada debió propagarse")
 
     stored = db_session.get(Commitment, commitment_id)
     assert stored.status is CommitmentStatus.PENDING

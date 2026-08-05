@@ -33,6 +33,26 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
+# Tablas que crea y versiona LangGraph, no Alembic. Sin esta exclusión, comparar los
+# modelos contra la base propone borrarlas. Vive acá, junto a la metadata, para que
+# `alembic/env.py` y los tests que comparan esquema usen exactamente el mismo criterio.
+EXTERNAL_TABLES = frozenset(
+    {
+        "checkpoint_migrations",
+        "checkpoints",
+        "checkpoint_blobs",
+        "checkpoint_writes",
+    }
+)
+
+
+def include_object(object_, name, type_, reflected, compare_to) -> bool:
+    """Filtro de autogenerate: ignora las tablas que Alembic no administra."""
+    if type_ == "table" and name in EXTERNAL_TABLES:
+        return False
+    return True
+
+
 def get_db() -> Generator[Session, None, None]:
     """Dependencia de FastAPI: entrega una sesión y la cierra siempre."""
     db = SessionLocal()

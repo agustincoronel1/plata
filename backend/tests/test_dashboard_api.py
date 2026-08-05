@@ -1,16 +1,17 @@
 """Tests de integración de /api/v1/dashboard/summary. Transaccionales contra PostgreSQL."""
 
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
 
+from app.core.timezone import app_today
 from tests.conftest import API, requires_postgres
 
 pytestmark = requires_postgres
 
-TODAY = date.today()
+TODAY = app_today()
 
 
 def _iso(days: int) -> str:

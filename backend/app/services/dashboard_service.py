@@ -16,6 +16,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.timezone import app_today
 from app.models import Commitment, Transaction, TransactionType, UserProfile
 from app.services import commitment_service
 from app.services.categorizer import OTHER_CATEGORY
@@ -163,7 +164,10 @@ def build_dashboard_summary(
     """
     profile = get_profile(session, user_id)
     commitments = commitment_service.list_commitments(session, user_id)
-    today = as_of or date.today()
+    # El mismo "hoy" con el que se fecha un movimiento (hora de Argentina). Con
+    # `date.today()` acá, en Render (UTC) un gasto de las 22:00 del último día del mes
+    # caería en el mes siguiente para el resumen y no para el movimiento.
+    today = as_of or app_today()
 
     profile_input = to_profile_input(profile)
     commitment_inputs = to_commitment_inputs(commitments)

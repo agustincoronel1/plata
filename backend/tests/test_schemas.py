@@ -1,16 +1,17 @@
 """Tests de los schemas de Pydantic. No tocan PostgreSQL: validan reglas de contrato."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
 
+from app.core.timezone import app_today
 from app.schemas.commitment import CommitmentCreate, CommitmentUpdate
 from app.schemas.profile import ProfileUpdate
 from app.schemas.transaction import TransactionCreate, TransactionUpdate
 
-TODAY = date.today()
+TODAY = app_today()
 TOMORROW = TODAY + timedelta(days=1)
 
 
@@ -95,6 +96,15 @@ def test_movimiento_descripcion_vacia_se_vuelve_none() -> None:
 def test_movimiento_rechaza_amount_no_positivo(amount: str) -> None:
     with pytest.raises(ValidationError):
         TransactionCreate(type="expense", amount=amount, category="comida")
+
+
+def test_movimiento_sin_fecha_usa_el_dia_de_argentina() -> None:
+    """El default es el día argentino, no el del servidor.
+
+    Render corre en UTC: con `date.today()` un gasto cargado a las 22:00 en Argentina
+    quedaba fechado al día siguiente.
+    """
+    assert TransactionCreate(type="expense", amount="10", category="comida").occurred_on == TODAY
 
 
 def test_movimiento_rechaza_fecha_futura() -> None:
