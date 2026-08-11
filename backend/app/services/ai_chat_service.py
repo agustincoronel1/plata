@@ -38,11 +38,13 @@ from app.ai.agent.schemas import (
 )
 from app.ai.agent.tools import ToolContext
 from app.ai.exceptions import AIError, DraftNotFoundError
+from app.ai.fast_path import match_fast_path
 from app.ai.gateway import get_ai_gateway
+from app.ai.trace import log_fast_path_hit, log_fast_path_miss
 from app.core.config import settings
 from app.schemas.ai_transaction import TransactionConfirmRequest
 from app.schemas.commitment import CommitmentCreate
-from app.services import ai_transaction_service, commitment_service
+from app.services import ai_transaction_service, commitment_service, fast_path_service
 from app.services.draft_store import DraftStatus, DraftStore, get_draft_store
 
 
@@ -130,6 +132,17 @@ def chat(
     if _active_pending_action(snapshot):
         raise PendingActionAwaitingResolutionError
 
+    # Atajo determinístico. Va acá y no antes por dos razones: el 409 por acción pendiente
+    # tiene que seguir ganando (una escritura sin resolver bloquea el turno, como siempre),
+    # y esta es la última línea antes de que el turno empiece a costar plata. Si resuelve,
+    # se sale sin invocar `before_provider`, así que no se reserva cuota, y sin llamar a
+    # `graph.invoke`, así que no corre el grafo, ni las tools, ni el RAG, ni el modelo.
+    fast_answer = _try_fast_path(
+        session, message, conversation_id, snapshot, user_id=user_id, as_of=as_of
+    )
+    if fast_answer is not None:
+        return fast_answer
+
     # Desde acá sí o sí se llama al modelo: es el punto exacto donde corresponde cobrar.
     if before_provider is not None:
         before_provider()
@@ -186,6 +199,53 @@ def resume(
     result = graph.invoke(None, config)
     trace_id = result.get("trace_id", uuid.uuid4().hex)
     return _response(conversation_id, trace_id, result)
+
+
+def _try_fast_path(
+    session: Session,
+    message: str,
+    conversation_id: uuid.UUID,
+    snapshot: Any,
+    *,
+    user_id: uuid.UUID,
+    as_of: date | None,
+) -> ChatResponse | None:
+    """Resuelve el turno sin IA si la consulta es simple. `None` = seguí con el agente.
+
+    Tres puertas, y basta con que una se cierre para que el mensaje siga de largo: que el
+    clasificador reconozca la frase, que la conversación no esté en medio de un alta a
+    medias, y que el servicio encuentre los datos. Ninguna de las tres consulta al modelo.
+
+    `as_of` es el de `chat()`, no el del ToolContext: el fast path fecha con la zona de
+    negocio (`app_today()`), que es la que decide a qué día pertenece un movimiento.
+    """
+    match = match_fast_path(message)
+    if match is None or _in_multi_turn_write(snapshot):
+        log_fast_path_miss()
+        return None
+
+    answer = fast_path_service.execute_fast_path(
+        session, match, user_id=user_id, conversation_id=conversation_id, as_of=as_of
+    )
+    if answer is None:
+        log_fast_path_miss()
+        return None
+
+    log_fast_path_hit(
+        intent=match.intent.value, period=match.period.value if match.period else None
+    )
+    return answer
+
+
+def _in_multi_turn_write(snapshot: Any) -> bool:
+    """True si la conversación está completando un compromiso a lo largo de varios turnos.
+
+    Con un alta a medias, el grafo interpreta el mensaje siguiente como la respuesta al
+    dato que falta ("son 350 mil"). Contestar ahí una consulta de saldo sería cambiar el
+    comportamiento actual del copiloto, así que el atajo se aparta y deja seguir al agente.
+    """
+    values = snapshot.values if snapshot else {}
+    return bool(values.get("pending_commitment_fields"))
 
 
 def _active_pending_action(snapshot: Any) -> dict[str, Any] | None:

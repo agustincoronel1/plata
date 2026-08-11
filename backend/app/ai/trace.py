@@ -97,3 +97,22 @@ def log_chat_trace(
         record["message"] = message
 
     logger.info("ai_chat %s", json.dumps(record, ensure_ascii=False))
+
+
+def log_fast_path_hit(*, intent: str, period: str | None = None) -> None:
+    """Marca que un turno se resolvió sin IA, con la forma de la consulta y nada más.
+
+    Contando estas líneas contra las de `ai_fast_path_miss` sale qué porcentaje de las
+    consultas está evitando el modelo, que es lo único que hay que poder medir.
+
+    No viaja el mensaje, ni montos, ni saldos, ni descripciones, ni la categoría
+    consultada: con la intención alcanza para la métrica y no se filtra de qué gasta la
+    persona. El `user_id` tampoco, igual que en el resto de las trazas.
+    """
+    suffix = f" period={period}" if period else ""
+    logger.info("ai_fast_path_hit intent=%s%s", intent, suffix)
+
+
+def log_fast_path_miss() -> None:
+    """Marca que la consulta no era simple y sigue por el flujo completo del agente."""
+    logger.info("ai_fast_path_miss")

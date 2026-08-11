@@ -114,6 +114,11 @@ class ChatResponse(BaseModel):
     # Cuota diaria restante. La adjunta la capa de API, que es la que la reservó; el grafo
     # no la conoce. `None` cuando la operación corrió sin límites (evaluadores, smoke).
     usage: AIUsageMetadata | None = None
+    # Quién resolvió el turno: el agente completo o el atajo determinístico previo
+    # (`app.ai.fast_path`). Es para depurar y para medir qué porcentaje de consultas
+    # evita el modelo; la interfaz no lo muestra. Tiene default, así que ninguna
+    # respuesta que ya existía cambia de forma.
+    source: Literal["agent", "fast_path"] = "agent"
 
 
 class ApprovalRequest(BaseModel):
