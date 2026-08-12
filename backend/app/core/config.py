@@ -15,7 +15,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "Plata API"
+    app_name: str = "Vector API"
+    # Descripción que se publica en /docs y en el esquema OpenAPI.
+    app_description: str = "API del copiloto financiero Vector."
     app_version: str = "0.1.0"
     environment: str = "development"
     frontend_url: str = "http://localhost:5173"
@@ -38,7 +40,7 @@ class Settings(BaseSettings):
     app_timezone: str = "America/Argentina/Buenos_Aires"
 
     # --- IA ---
-    # El proveedor por defecto es "mock": Plata arranca y funciona sin API key. Un proveedor
+    # El proveedor por defecto es "mock": Vector arranca y funciona sin API key. Un proveedor
     # real mal configurado no se valida acá sino al ejecutar una operación de IA, para que
     # nunca impida arrancar el backend (ver app.ai).
     ai_provider: str = "mock"

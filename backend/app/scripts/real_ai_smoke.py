@@ -114,7 +114,7 @@ class CallBudget:
 
 
 def _install_budget(budget: CallBudget) -> None:
-    """Intercepta los tres puntos donde Plata habla con el proveedor real."""
+    """Intercepta los tres puntos donde Vector habla con el proveedor real."""
     from app.ai.agent import brain as brain_module
     from app.ai.providers import openai as provider_module
     from app.ai.rag import embeddings as embeddings_module

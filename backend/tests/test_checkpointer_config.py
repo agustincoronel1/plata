@@ -64,7 +64,7 @@ def test_el_error_del_checkpointer_es_503_y_no_filtra_la_conexion() -> None:
 
 
 def test_arrancar_sin_base_no_rompe_la_aplicacion(monkeypatch) -> None:
-    """El arranque informa el fallo y sigue: Plata sirve sin copiloto."""
+    """El arranque informa el fallo y sigue: Vector sirve sin copiloto."""
     settings.ai_checkpoint_store = "postgres"
     cp.reset_checkpointer()
     monkeypatch.setattr(

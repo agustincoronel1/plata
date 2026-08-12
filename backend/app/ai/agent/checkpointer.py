@@ -31,7 +31,7 @@ En el arranque de la aplicación (lifespan), no en la primera petición. Así el
 `setup()` y la aplicación de RLS ocurren una sola vez, con la app todavía sin tráfico, y no
 en medio del primer mensaje de alguien.
 
-Si falla, la aplicación **igual arranca**: Plata funciona sin IA (dashboard, movimientos,
+Si falla, la aplicación **igual arranca**: Vector funciona sin IA (dashboard, movimientos,
 compromisos, simulaciones) y tumbar todo porque el copiloto no puede checkpointear sería
 peor. Lo que se hace es dejar el copiloto indisponible con un 503 explícito y un
 `logger.error` visible. Nunca se cae a memoria en silencio: perder el estado sin avisar es
@@ -58,7 +58,7 @@ MEMORY = "memory"
 VALID_MODES = (POSTGRES, MEMORY)
 
 # Clave del advisory lock que serializa `setup()` entre instancias. Es un número arbitrario
-# pero FIJO: lo único que importa es que todas las instancias de Plata usen el mismo.
+# pero FIJO: lo único que importa es que todas las instancias de Vector usen el mismo.
 _SETUP_LOCK_KEY = 8_171_993_042_115
 
 # Cuánto se espera, como mucho, a que otra instancia termine su `setup()`.
@@ -89,7 +89,7 @@ class CheckpointerUnavailableError(AIError):
     status_code = 503
     default_detail = (
         "El copiloto no está disponible en este momento. Podés seguir usando las funciones "
-        "manuales de Plata."
+        "manuales de Vector."
     )
 
 

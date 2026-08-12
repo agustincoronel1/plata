@@ -81,12 +81,12 @@ def daily_limit_message(limit: int) -> str:
     """Texto del límite agotado, con el número real configurado.
 
     Un solo mensaje porque ahora hay una sola cuota, compartida por todos los canales. Dice
-    qué se puede seguir haciendo —todo lo manual— para que no parezca que Plata entera dejó
+    qué se puede seguir haciendo —todo lo manual— para que no parezca que Vector entera dejó
     de funcionar.
     """
     return (
         f"Llegaste al límite de {limit} consultas inteligentes por hoy. Podés seguir usando "
-        "las funciones manuales de Plata y volver a consultar mañana."
+        "las funciones manuales de Vector y volver a consultar mañana."
     )
 
 
@@ -104,7 +104,7 @@ class AIDailyLimitReachedError(AIError):
     status_code = 429
     default_detail = (
         "Llegaste al límite de consultas inteligentes por hoy. Podés seguir usando las "
-        "funciones manuales de Plata y volver a consultar mañana."
+        "funciones manuales de Vector y volver a consultar mañana."
     )
 
     def __init__(self, usage: object | None = None, detail: str | None = None) -> None:

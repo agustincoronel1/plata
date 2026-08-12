@@ -26,7 +26,7 @@ export default function BalanceHero({ summary, onOpenDetail }) {
   const spendable = inDeficit ? '0' : summary?.spendable_total
   const tone = summary ? (TONES[summary.status] ?? TONES.incomplete) : null
 
-  let note = 'Plata calculará tu margen real cuando completes tu situación.'
+  let note = 'Vector calculará tu margen real cuando completes tu situación.'
   if (inDeficit) {
     note = `Tus compromisos y reservas superan tu saldo por ${formatMoney(summary.deficit_amount)}.`
   } else if (summary) {

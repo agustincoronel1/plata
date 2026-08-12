@@ -23,7 +23,7 @@ const SUGGESTIONS = [
 ]
 
 /**
- * Copiloto financiero: conversación con el agente. Muestra "Pensando…", cómo llegó al
+ * Copiloto financiero: conversación con el agente. Muestra el estado de análisis, cómo llegó al
  * número (en castellano, no con nombres de herramientas), la evidencia, y pausa las
  * escrituras para que la persona apruebe. Nunca muestra prompts, API key, cadena de
  * razonamiento, SQL ni campos internos del backend.
@@ -169,7 +169,7 @@ export default function CopilotPanel({ onActionApplied }) {
         ))}
         {thinking && (
           <li className="copilot__msg copilot__msg--assistant" aria-live="polite">
-            <p className="copilot__thinking">Pensando…</p>
+            <p className="copilot__thinking">Vector está analizando tus movimientos…</p>
           </li>
         )}
       </ol>
@@ -221,7 +221,7 @@ export default function CopilotPanel({ onActionApplied }) {
           className="input"
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="Preguntá algo sobre tu plata…"
+          placeholder="Preguntale a Vector sobre tus finanzas…"
           disabled={thinking || chatLocked}
         />
         <button

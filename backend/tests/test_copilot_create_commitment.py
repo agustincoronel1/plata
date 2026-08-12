@@ -128,7 +128,7 @@ def test_una_fecha_del_mes_que_ya_paso_salta_al_ano_siguiente() -> None:
 
 
 def test_una_fecha_vencida_del_mes_en_curso_se_conserva() -> None:
-    """Plata trata los vencidos como caso normal: es una cuenta que se debe, no un error.
+    """Vector trata los vencidos como caso normal: es una cuenta que se debe, no un error.
 
     Saltar al año siguiente agendaría el alquiler para dentro de doce meses, que es peor
     que registrarlo vencido por una semana.

@@ -57,7 +57,7 @@ export const UNAUTHORIZED_MESSAGE = 'Tu sesión expiró. Iniciá sesión de nuev
  */
 export const AI_LIMIT_MESSAGE =
   'Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando las ' +
-  'funciones manuales de Plata y volver a consultar mañana.'
+  'funciones manuales de Vector y volver a consultar mañana.'
 
 /**
  * Respaldo del texto del 429 de rate limit (demasiadas peticiones en poco tiempo). Es un
@@ -384,7 +384,7 @@ export async function fetchApiHealth({ signal, timeoutMs = HEALTH_TIMEOUT_MS } =
 
     const body = await response.json().catch(() => null)
     if (body?.status !== 'ok') {
-      // Respondió 200 pero no es el healthcheck de Plata (un proxy, una página de error):
+      // Respondió 200 pero no es el healthcheck de Vector (un proxy, una página de error):
       // tampoco es "arrancando".
       return { ok: false, status: response.status, waking: false }
     }

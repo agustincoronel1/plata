@@ -33,7 +33,7 @@ const ready = () => screen.findByRole('heading', { name: /Tu situación/i })
 
 // Las dos navegaciones conviven en el DOM y CSS decide cuál se ve, así que cada consulta
 // se hace dentro de su landmark.
-const desktopNav = () => screen.getByRole('navigation', { name: /Secciones de Plata/i })
+const desktopNav = () => screen.getByRole('navigation', { name: /Secciones de Vector/i })
 const mobileNav = () => screen.getByRole('navigation', { name: /Navegación rápida/i })
 
 beforeEach(() => {

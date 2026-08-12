@@ -1,10 +1,10 @@
-# Plata
+# Vector
 
 No te dice solamente cuánto dinero tenés. Te dice cuánto podés usar.
 
 Las apps de finanzas muestran el saldo de la cuenta y lo tratan como dinero disponible.
 No lo es: ese número todavía incluye el alquiler que vence en diez días, las cuotas que se
-van a debitar y los servicios del mes. Plata parte del saldo, resta todo lo que ya está
+van a debitar y los servicios del mes. Vector parte del saldo, resta todo lo que ya está
 comprometido y responde una sola pregunta: **cuánto podés gastar hoy sin comprometer el
 resto del mes.**
 
@@ -120,7 +120,7 @@ injection que corre en cada iteración.
 
 ### Autenticación
 
-Plata no emite ni guarda credenciales. Registro, login, hash de contraseña y renovación de
+Vector no emite ni guarda credenciales. Registro, login, hash de contraseña y renovación de
 token ocurren en Supabase Auth; el backend solo verifica el token que llega. No hay tabla
 de usuarios propia ni contraseñas en la base.
 
@@ -304,7 +304,7 @@ Lo administra `app/ai/agent/checkpointer.py`:
 - **El pool se cierra en el shutdown.**
 
 Si PostgreSQL no está disponible, **la aplicación arranca igual** y solo el copiloto queda
-en 503 con un mensaje que dice que las funciones manuales siguen andando. Tumbar Plata
+en 503 con un mensaje que dice que las funciones manuales siguen andando. Tumbar Vector
 entera porque el copiloto no puede checkpointear sería peor: el dashboard, los movimientos,
 los compromisos y las simulaciones no dependen de esto. Lo que **nunca** pasa es caer a
 memoria en silencio.
@@ -417,7 +417,7 @@ python -m alembic heads      # dónde está el repo: tiene que haber una sola he
 python -m alembic upgrade head
 ```
 
-Recién entonces se despliega el backend, y al final el frontend. Las migraciones de Plata
+Recién entonces se despliega el backend, y al final el frontend. Las migraciones de Vector
 son aditivas (columnas nuevas con default), así que el código viejo sigue funcionando
 contra el esquema nuevo mientras dura el deploy.
 
@@ -524,6 +524,18 @@ El MVP está completo y validado contra OpenAI real. Lo que todavía no está:
 
 Fuera de alcance por decisión, no por tiempo: voz, imágenes, OCR, PDFs, extractos
 bancarios, múltiples monedas y finanzas compartidas.
+
+## Sobre el nombre
+
+Vector fue desarrollado inicialmente bajo el nombre interno Plata. Quedan identificadores
+técnicos con ese nombre que **no** se renombraron porque están persistidos y renombrarlos no
+aporta nada visible: la función SQL `plata_secure_langgraph_tables()`, las políticas RLS
+`plata_<tabla>_<operación>`, el nombre de la base y el rol de PostgreSQL, y el volumen y el
+contenedor de Docker Compose. Cambiarlos exigiría una migración con período de
+compatibilidad; están anotados como deuda técnica y el usuario final no los ve.
+
+La palabra "plata" en minúscula, cuando significa dinero ("en qué se fue tu plata"), es
+lenguaje natural rioplatense y se conserva a propósito.
 
 ## Licencia
 

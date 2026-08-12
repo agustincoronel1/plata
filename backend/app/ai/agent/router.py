@@ -324,7 +324,7 @@ def _date_span(normalized: str, as_of: date) -> tuple[date, int, int] | None:
 def _explicit_date(day: int, month: int, as_of: date) -> date | None:
     """Fecha con día y mes dichos a mano.
 
-    El salto al año siguiente se decide por MES, no por día, y es a propósito: Plata trata
+    El salto al año siguiente se decide por MES, no por día, y es a propósito: Vector trata
     los compromisos vencidos como un caso normal (`overdue_commitments_amount`, y el motor
     financiero sigue descontando los `pending` con vencimiento pasado). Entonces "el 5 de
     agosto" dicho un 12 de agosto es una cuenta que se debe y todavía no se pagó, no un

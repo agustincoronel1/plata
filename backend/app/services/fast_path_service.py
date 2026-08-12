@@ -71,7 +71,7 @@ _PERIOD_LABEL: dict[Period, str] = {
 
 
 def period_bounds(period: Period, today: date) -> tuple[date, date]:
-    """Primer y último día del período, en la zona de negocio de Plata.
+    """Primer y último día del período, en la zona de negocio de Vector.
 
     `today` lo provee quien llama con `app_today()`, así un gasto de las 22:00 de Argentina
     cuenta en su día y no en el siguiente (el servidor corre en UTC).

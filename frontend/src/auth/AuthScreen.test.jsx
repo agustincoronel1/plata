@@ -66,10 +66,10 @@ describe('pantalla de acceso', () => {
     expect(screen.queryByLabelText('Repetí la contraseña')).not.toBeInTheDocument()
   })
 
-  it('conserva la identidad visual de Plata', () => {
+  it('conserva la identidad visual de Vector', () => {
     renderScreen()
 
-    expect(screen.getAllByRole('img', { name: 'Plata' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('img', { name: 'Vector' }).length).toBeGreaterThan(0)
     expect(screen.getByText(/no constituye asesoramiento financiero/i)).toBeInTheDocument()
   })
 

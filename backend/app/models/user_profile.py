@@ -20,7 +20,7 @@ MONEY = Numeric(14, 2)
 
 
 class UserProfile(TimestampMixin, Base):
-    """Perfil financiero de un usuario. Es también su identidad dentro de Plata.
+    """Perfil financiero de un usuario. Es también su identidad dentro de Vector.
 
     La clave primaria es el `sub` del JWT de Supabase, así que no hay tabla de usuarios
     aparte ni columna `user_id` acá: el perfil ES el usuario. Se crea la primera vez que

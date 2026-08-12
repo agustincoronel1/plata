@@ -45,6 +45,6 @@ def upsert_profile(
 
     Responde 200 tanto al crear como al actualizar, para que el frontend no tenga que
     distinguir los dos casos. Al crear, la clave primaria es el UUID de Supabase: es el
-    alta del usuario en Plata.
+    alta del usuario en Vector.
     """
     return profile_service.upsert_profile(db, user_id=current_user.id, payload=payload)

@@ -23,7 +23,7 @@ export default function TransactionList({
       <EmptyState
         icon="receipt"
         title="Todavía no hay movimientos"
-        description="Registrá tu primer ingreso o gasto para que Plata calcule cuánto podés usar de verdad."
+        description="Registrá tu primer ingreso o gasto para que Vector calcule cuánto podés usar de verdad."
       >
         <button type="button" className="btn btn--primary" onClick={onCreateManual}>
           Registrar manualmente

@@ -147,22 +147,22 @@ def test_en_desarrollo_se_incluyen_los_origenes_locales() -> None:
 def test_en_produccion_solo_queda_el_frontend_configurado() -> None:
     """Los orígenes locales son una comodidad de desarrollo, no del despliegue real."""
     origins = Settings(
-        environment="production", frontend_url="https://plata.example"
+        environment="production", frontend_url="https://vector.example"
     ).cors_allowed_origins
 
-    assert origins == ["https://plata.example"]
+    assert origins == ["https://vector.example"]
 
 
 def test_se_pueden_declarar_origenes_extra_explicitos() -> None:
     origins = Settings(
         environment="production",
-        frontend_url="https://plata.example",
-        cors_extra_origins="https://preview.plata.example, https://otro.example",
+        frontend_url="https://vector.example",
+        cors_extra_origins="https://preview.vector.example, https://otro.example",
     ).cors_allowed_origins
 
     assert origins == [
-        "https://plata.example",
-        "https://preview.plata.example",
+        "https://vector.example",
+        "https://preview.vector.example",
         "https://otro.example",
     ]
 

@@ -1000,7 +1000,7 @@
 /* ---------- Acceso (login / registro) ---------- */
 
 /* Reusa la tarjeta de bienvenida: la primera pantalla sin sesión tiene que verse como
-   Plata, no como un formulario aparte. */
+   Vector, no como un formulario aparte. */
 .auth .form {
   margin-top: var(--space-1);
 }

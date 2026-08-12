@@ -29,7 +29,7 @@ export const COLD_START_BUDGET_MS = 75000
 export const MIN_RECHECK_MS = 30000
 
 export const WAKING_MESSAGE =
-  'Estamos iniciando el servidor de Plata. Puede tardar hasta un minuto la primera vez.'
+  'Estamos iniciando el servidor de Vector. Puede tardar hasta un minuto la primera vez.'
 
 export const UNAVAILABLE_MESSAGE =
   'No pudimos iniciar el servidor. Intentá nuevamente en unos minutos.'

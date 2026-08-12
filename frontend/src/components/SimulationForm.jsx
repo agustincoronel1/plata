@@ -14,7 +14,7 @@ function todayIso() {
 
 /**
  * Formulario para simular una compra en cuotas. El total es el costo final financiado;
- * Plata no calcula intereses. La proyección la hace el backend.
+ * Vector no calcula intereses. La proyección la hace el backend.
  */
 export default function SimulationForm({ onSubmit, onClose }) {
   const [values, setValues] = useState({
@@ -58,7 +58,7 @@ export default function SimulationForm({ onSubmit, onClose }) {
   return (
     <Modal title="Simular compra" titleId="simulation-form-title" onClose={onClose}>
       <p className="modal__text">
-        Ingresá el total final financiado. Plata no calcula intereses: usa el monto que ya
+        Ingresá el total final financiado. Vector no calcula intereses: usa el monto que ya
         vas a pagar.
       </p>
       <form className="form" onSubmit={handleSubmit} noValidate>

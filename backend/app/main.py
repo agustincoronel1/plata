@@ -31,7 +31,7 @@ async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
     aplicación de RLS ocurran una sola vez, con la aplicación todavía sin tráfico, en lugar
     de en medio del primer mensaje de alguien.
 
-    Un fallo no impide arrancar: Plata funciona sin IA y tumbar todo porque el copiloto no
+    Un fallo no impide arrancar: Vector funciona sin IA y tumbar todo porque el copiloto no
     puede checkpointear sería peor. Queda registrado como error y el copiloto responde 503
     hasta que la base vuelva. Lo que NO pasa es caer a memoria en silencio.
     """
@@ -47,6 +47,7 @@ async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title=settings.app_name,
+    description=settings.app_description,
     version=settings.app_version,
     lifespan=lifespan,
 )

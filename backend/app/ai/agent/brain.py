@@ -329,7 +329,7 @@ class OpenAIAgentBrain:  # pragma: no cover - requiere red y API key
                 {
                     "role": "system",
                     "content": (
-                        "Sos el planificador del copiloto financiero Plata. Elegí solo tools "
+                        "Sos el planificador del copiloto financiero Vector. Elegí solo tools "
                         "del allowlist cuando hagan falta datos o una escritura. Si no hace "
                         "falta tool, devolvé una intención estructurada. No calcules saldos. "
                         + ROUTING_RULES
@@ -376,7 +376,7 @@ class OpenAIAgentBrain:  # pragma: no cover - requiere red y API key
             {
                 "role": "system",
                 "content": (
-                    "Sos el copiloto financiero Plata. Usá solo tools del allowlist. "
+                    "Sos el copiloto financiero Vector. Usá solo tools del allowlist. "
                     "No calcules saldos ni totales: pedí tools. Las escrituras solo "
                     "preparan drafts y requieren aprobación humana. "
                     + ROUTING_RULES
@@ -566,7 +566,7 @@ def strict_parameters(model: type[BaseModel]) -> dict[str, Any]:
     resultado sería un 400 `invalid_function_parameters` antes de ejecutar una sola tool.
 
     Se usa la transformación **oficial** del SDK instalado cuando está disponible, así el
-    contrato lo define quien valida del otro lado. Si el SDK no está (Plata tiene que poder
+    contrato lo define quien valida del otro lado. Si el SDK no está (Vector tiene que poder
     importarse sin él), cae a una implementación local equivalente. Los modelos de dominio
     quedan intactos: los argumentos se siguen validando con Pydantic al volver.
     """
@@ -632,7 +632,7 @@ def _tool_specs() -> list[dict[str, Any]]:
             {
                 "type": "function",
                 "name": name,
-                "description": f"Plata tool autorizada: {name}.",
+                "description": f"Vector tool autorizada: {name}.",
                 "parameters": strict_parameters(tool.args_model),
                 "strict": True,
             }

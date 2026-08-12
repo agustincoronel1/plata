@@ -242,7 +242,7 @@ def _apply_business_rules(
 
     if tx.currency != SUPPORTED_CURRENCY:
         add_ambiguity(
-            f"Moneda no soportada ({tx.currency}): Plata solo maneja pesos argentinos (ARS)."
+            f"Moneda no soportada ({tx.currency}): Vector solo maneja pesos argentinos (ARS)."
         )
         confirmable = False
 

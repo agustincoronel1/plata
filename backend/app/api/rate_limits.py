@@ -54,7 +54,7 @@ def user_rate_limit(scope: str, limit: Callable[[], int], window_seconds: int) -
 # --- Reglas concretas ---
 
 # Techo general de la API por IP. Red de contención contra scripts: una persona usando
-# Plata no se le acerca.
+# Vector no se le acerca.
 api_ip_limit = ip_rate_limit("ip:api", lambda: settings.rate_limit_ip_per_minute, MINUTE)
 
 # Verificación de tokens. Es lo más parecido a un endpoint de credenciales que expone este

@@ -387,7 +387,7 @@ TOOLS: dict[str, Tool] = {
 }
 
 MULTIPLE_SENSITIVE_ACTIONS_ERROR = "multiple_sensitive_actions_not_allowed"
-MULTIPLE_SENSITIVE_ACTIONS_MESSAGE = "Plata prepara una acción sensible por vez."
+MULTIPLE_SENSITIVE_ACTIONS_MESSAGE = "Vector prepara una acción sensible por vez."
 
 
 def is_write_tool(name: str) -> bool:

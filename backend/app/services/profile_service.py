@@ -60,7 +60,7 @@ def upsert_profile(session: Session, user_id: UUID, payload: ProfileUpdate) -> U
     Devuelve el perfil ya persistido. El saldo se toma tal cual lo manda el cliente: el
     PUT del perfil es una edición directa de la situación, no un movimiento.
 
-    Es también el alta del usuario en Plata: la primera vez que alguien completa el
+    Es también el alta del usuario en Vector: la primera vez que alguien completa el
     onboarding, esta función crea la fila con su UUID de Supabase como clave primaria.
     """
     profile = session.execute(

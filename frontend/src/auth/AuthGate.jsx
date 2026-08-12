@@ -10,7 +10,7 @@ import { useAuth } from './AuthContext'
  * Decide qué se ve: pantalla de acceso o aplicación.
  *
  * Mientras se restaura la sesión guardada no se muestra ninguna de las dos, sino el mismo
- * esqueleto de carga que usa el resto de Plata. Sin ese paso intermedio, al recargar se
+ * esqueleto de carga que usa el resto de Vector. Sin ese paso intermedio, al recargar se
  * vería un destello del login antes de entrar (o al revés), que es justo la sensación de
  * "se me cerró la sesión" que no queremos dar.
  *

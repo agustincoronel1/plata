@@ -154,7 +154,7 @@ export default function ProfileForm({ profile, isSetup = false, onSubmit, onClos
         <FormField
           id="profile-protected"
           label="Dinero protegido"
-          hint="Reserva que Plata no considera disponible."
+          hint="Reserva que Vector no considera disponible."
           error={fieldErrors.protected_amount}
         >
           {({ id, describedBy, invalid }) => (

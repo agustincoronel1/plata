@@ -5,7 +5,7 @@ import AIUsageNotice from './AIUsageNotice'
 
 /**
  * El aviso tiene que aparecer justo cuando hace falta y callarse el resto del tiempo:
- * alguien que usa Plata dos veces por día no debería enterarse de que hay un límite.
+ * alguien que usa Vector dos veces por día no debería enterarse de que hay un límite.
  *
  * Habla de "consultas inteligentes" porque eso es lo que se cuenta: una sola cuota diaria
  * para toda la IA, no una por operación.

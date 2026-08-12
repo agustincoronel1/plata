@@ -4,7 +4,7 @@ import { vi } from 'vitest'
  * Doble del cliente de Supabase para los tests de autenticación.
  *
  * Los tests NUNCA hablan con el proyecto real: no habría red, gastaría cuota y dejaría de
- * ser determinístico. Este doble reproduce solo lo que Plata usa del SDK —getSession,
+ * ser determinístico. Este doble reproduce solo lo que Vector usa del SDK —getSession,
  * onAuthStateChange, signUp, signInWithPassword y signOut— con el mismo contrato de
  * `{ data, error }` y la misma forma de suscripción.
  */

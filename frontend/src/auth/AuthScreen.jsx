@@ -11,7 +11,7 @@ export const MIN_PASSWORD_LENGTH = 8
 
 const POINTS = [
   { icon: 'wallet', text: 'Tus datos quedan asociados a tu cuenta, no al navegador.' },
-  { icon: 'shield', text: 'La contraseña la maneja Supabase: Plata nunca la guarda.' },
+  { icon: 'shield', text: 'La contraseña la maneja Supabase: Vector nunca la guarda.' },
 ]
 
 /**
@@ -108,8 +108,8 @@ export default function AuthScreen() {
           </h1>
           <p className="welcome__lead">
             {isSignUp
-              ? 'Con tu cuenta, Plata guarda tu situación financiera y la recupera cuando vuelvas.'
-              : 'Ingresá para ver cuánto podés usar hoy.'}
+              ? 'Con tu cuenta, Vector guarda tu situación financiera y la recupera cuando vuelvas.'
+              : 'Tus finanzas, en la dirección correcta.'}
           </p>
 
           <div className="auth__switch" role="group" aria-label="Iniciar sesión o crear cuenta">
@@ -215,7 +215,7 @@ export default function AuthScreen() {
 
       <footer className="app-footer">
         <p className="app-footer__disclaimer">
-          Plata es una herramienta de organización y simulación. No constituye asesoramiento
+          Vector es una herramienta de organización y simulación. No constituye asesoramiento
           financiero.
         </p>
       </footer>

@@ -57,7 +57,7 @@ const FOOTER = (
       No te dice solamente cuánto dinero tenés. <em>Te dice cuánto podés usar.</em>
     </p>
     <p className="app-footer__disclaimer">
-      Plata es una herramienta de organización y simulación. No constituye asesoramiento
+      Vector es una herramienta de organización y simulación. No constituye asesoramiento
       financiero.
     </p>
   </>

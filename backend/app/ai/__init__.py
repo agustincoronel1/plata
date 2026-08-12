@@ -1,4 +1,4 @@
-"""Base de AI Engineering de Plata.
+"""Base de AI Engineering de Vector.
 
 Estructura deliberadamente pequeña:
 

@@ -6,7 +6,7 @@
  * interpretación de movimientos consumen el mismo cupo diario de la cuenta.
  *
  * Es deliberadamente discreto y no es una burbuja de conversación: no entra en el
- * historial del chat, no interrumpe y no bloquea nada. Alguien que usa Plata dos veces al
+ * historial del chat, no interrumpe y no bloquea nada. Alguien que usa Vector dos veces al
  * día nunca se entera de que hay un límite.
  */
 

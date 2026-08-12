@@ -38,7 +38,7 @@ export default function CommitmentList({
       <EmptyState
         icon="calendar"
         title="Todavía no hay compromisos"
-        description="Son los pagos que ya sabés que tenés que hacer: alquiler, tarjeta, servicios. Plata los descuenta de tu disponible para no prometerte plata que ya está gastada."
+        description="Son los pagos que ya sabés que tenés que hacer: alquiler, tarjeta, servicios. Vector los descuenta de tu disponible para no prometerte plata que ya está gastada."
       >
         <button type="button" className="btn btn--primary" onClick={onCreate}>
           Agregar tu primer compromiso

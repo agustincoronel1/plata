@@ -1,4 +1,4 @@
-"""Qué día es "hoy" para Plata, sin depender de la zona horaria del servidor.
+"""Qué día es "hoy" para Vector, sin depender de la zona horaria del servidor.
 
 Render corre en UTC. Sin esto, un gasto cargado a las 22:00 de Argentina quedaría fechado
 al día siguiente. La zona de negocio sale de `settings.app_timezone` y es independiente de
@@ -32,5 +32,5 @@ def app_timezone() -> ZoneInfo:
 
 
 def app_today(now: datetime | None = None) -> date:
-    """Día calendario de Plata para fechas de negocio (movimientos, pagos)."""
+    """Día calendario de Vector para fechas de negocio (movimientos, pagos)."""
     return today_in(app_timezone_name(), now)

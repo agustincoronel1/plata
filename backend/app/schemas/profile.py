@@ -39,7 +39,7 @@ class ProfileUpdate(BaseModel):
         if len(normalized) != 3:
             raise ValueError("La moneda debe tener exactamente tres letras.")
         if normalized != SUPPORTED_CURRENCY:
-            raise ValueError(f"Por ahora Plata solo maneja {SUPPORTED_CURRENCY}.")
+            raise ValueError(f"Por ahora Vector solo maneja {SUPPORTED_CURRENCY}.")
         return normalized
 
 

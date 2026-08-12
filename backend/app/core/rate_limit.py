@@ -9,7 +9,7 @@ tirar abajo ni encarecer con un script. Es una cosa distinta de la cuota diaria 
 - La cuota de IA se descuenta solo cuando se va a invocar al modelo. Una acción manual
   —crear un movimiento, pagar un compromiso, ver el dashboard— nunca la toca.
 - El rate limit cuenta peticiones, sin importar si hubo IA. Sus límites están puestos muy
-  por encima del uso humano razonable, así que una persona usando Plata no los alcanza.
+  por encima del uso humano razonable, así que una persona usando Vector no los alcanza.
 
 Las dos responden 429, y el cuerpo lleva un `code` distinto para que el frontend sepa cuál
 fue sin leer el texto.

@@ -32,7 +32,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* Ningún layout de Plata debe provocar scroll horizontal. */
+  /* Ningún layout de Vector debe provocar scroll horizontal. */
   overflow-x: hidden;
 }
 

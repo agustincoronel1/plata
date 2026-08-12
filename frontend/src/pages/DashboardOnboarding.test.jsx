@@ -56,7 +56,7 @@ afterEach(() => {
 })
 
 describe('Bienvenida sin perfil', () => {
-  it('explica qué hace Plata y no muestra un dashboard vacío', async () => {
+  it('explica qué hace Vector y no muestra un dashboard vacío', async () => {
     noProfile()
     render(<DashboardPage />)
 

@@ -27,7 +27,7 @@ const SLEEPING = { ok: false, status: 0, waking: true }
 const BAD_GATEWAY = { ok: false, status: 502, waking: true }
 const BROKEN = { ok: false, status: 500, waking: false }
 
-const WAKING_TEXT = /Estamos iniciando el servidor de Plata\./
+const WAKING_TEXT = /Estamos iniciando el servidor de Vector\./
 const FAILED_TEXT = /No pudimos iniciar el servidor\./
 
 function mount() {

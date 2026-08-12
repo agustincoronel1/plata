@@ -11,6 +11,6 @@ def test_health() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
-        "service": "plata-api",
+        "service": "vector-api",
         "version": "0.1.0",
     }

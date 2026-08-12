@@ -1,4 +1,4 @@
-"""Motor financiero determinístico de Plata.
+"""Motor financiero determinístico de Vector.
 
 Servicio **puro**: no depende de FastAPI, no toca la base, no hace commits, no modifica
 modelos ni el saldo. Recibe datos y una fecha `as_of` (para poder probarlo con fechas

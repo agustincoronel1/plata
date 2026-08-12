@@ -29,7 +29,9 @@ def health() -> dict[str, str]:
     """Healthcheck de la API: no toca PostgreSQL."""
     return {
         "status": "ok",
-        "service": "plata-api",
+        # Renombrado en el rebranding. Es seguro: el frontend valida `status`, no `service`
+        # (ver `fetchApiHealth` en services/api.js), y Render solo mira el código HTTP.
+        "service": "vector-api",
         "version": settings.app_version,
     }
 

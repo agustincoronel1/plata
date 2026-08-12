@@ -14,7 +14,7 @@ const POINTS = [
  * Primera pantalla cuando todavía no hay un perfil cargado (la API responde 404).
  *
  * No muestra el dashboard con ceros ni abre ningún modal solo: explica para qué sirve
- * Plata y deja una única acción principal, que reutiliza el formulario de perfil.
+ * Vector y deja una única acción principal, que reutiliza el formulario de perfil.
  */
 export default function WelcomeScreen({ onStart }) {
   return (
@@ -25,7 +25,7 @@ export default function WelcomeScreen({ onStart }) {
         Tu plata, con contexto.
       </h2>
       <p className="welcome__lead">
-        Plata te muestra cuánto podés usar realmente, sin descuidar tus gastos y compromisos.
+        Vector te muestra cuánto podés usar realmente, sin descuidar tus gastos y compromisos.
       </p>
 
       <ul className="welcome__points">

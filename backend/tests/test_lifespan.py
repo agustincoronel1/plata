@@ -41,7 +41,7 @@ def test_el_checkpointer_se_inicializa_en_el_arranque(monkeypatch):
 
 
 def test_un_checkpointer_caido_no_impide_arrancar(monkeypatch):
-    """Plata sirve sin copiloto: dashboard, movimientos y compromisos siguen andando.
+    """Vector sirve sin copiloto: dashboard, movimientos y compromisos siguen andando.
 
     Tumbar la aplicación entera porque el copiloto no puede checkpointear sería peor que
     dejar ese pedazo en 503.

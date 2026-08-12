@@ -264,7 +264,7 @@ describe('respuesta 429 (rate limit)', () => {
             code: 'daily_ai_limit_reached',
             message:
               'Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando ' +
-              'las funciones manuales de Plata y volver a consultar mañana.',
+              'las funciones manuales de Vector y volver a consultar mañana.',
             limit: 10,
             used: 10,
             remaining: 0,
@@ -281,7 +281,7 @@ describe('respuesta 429 (rate limit)', () => {
 
     expect(error.message).toBe(
       'Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando las ' +
-        'funciones manuales de Plata y volver a consultar mañana.',
+        'funciones manuales de Vector y volver a consultar mañana.',
     )
     // El objeto queda disponible para la UI, sin que cada componente vuelva a parsearlo.
     expect(error.detail).toMatchObject({

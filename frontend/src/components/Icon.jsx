@@ -1,5 +1,5 @@
 /**
- * Set de iconos lineales propios de Plata, en SVG y con `currentColor`.
+ * Set de iconos lineales propios de Vector, en SVG y con `currentColor`.
  *
  * Son decorativos: el significado siempre está en el texto o en el `aria-label` del botón
  * que los contiene, así que se marcan con aria-hidden. No se usan emojis como iconos.

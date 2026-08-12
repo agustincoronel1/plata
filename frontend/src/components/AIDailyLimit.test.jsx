@@ -36,7 +36,7 @@ const { ApiError } = api
 // mal" para este caso: se dice qué pasó y qué se puede seguir haciendo.
 const LIMIT_MESSAGE =
   'Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando las ' +
-  'funciones manuales de Plata y volver a consultar mañana.'
+  'funciones manuales de Vector y volver a consultar mañana.'
 
 /** El 429 que arma `api.js` a partir del detalle estructurado del backend. */
 function limitError(message = LIMIT_MESSAGE) {

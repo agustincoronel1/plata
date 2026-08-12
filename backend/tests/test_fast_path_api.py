@@ -5,7 +5,7 @@ promesa. Una consulta simple tiene que responder **sin** llamar al proveedor, si
 embeddings, sin correr el grafo y sin gastar una de las 10 consultas del día. Cada una de
 esas cuatro cosas tiene su propio test y falla por su propio motivo.
 
-El resto verifica lo de siempre en Plata: que los datos sean los del usuario autenticado y
+El resto verifica lo de siempre en Vector: que los datos sean los del usuario autenticado y
 de nadie más, y que lo que el fast path no reconoce siga exactamente como estaba.
 """
 

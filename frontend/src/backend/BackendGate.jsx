@@ -12,7 +12,7 @@ import { UNAVAILABLE_MESSAGE, WAKING_MESSAGE } from './coldStart'
  * cinco consultas del dashboard contra un servidor que todavía está arrancando. Cuando
  * contesta, se montan y piden sus datos solos — no hay que recargar la página.
  *
- * Las tres pantallas que puede mostrar usan el mismo `boot` que el resto de Plata: es el
+ * Las tres pantallas que puede mostrar usan el mismo `boot` que el resto de Vector: es el
  * mismo esqueleto de carga de siempre, no una pantalla nueva.
  */
 
@@ -92,7 +92,7 @@ export default function BackendGate({ children, onSignOut }) {
     <BootFrame onSignOut={onSignOut}>
       <LoadingSkeleton />
       <p className="loading-status" role="status" aria-live="polite">
-        Conectando con Plata…
+        Conectando con Vector…
       </p>
     </BootFrame>
   )

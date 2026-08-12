@@ -68,7 +68,7 @@ describe('protección de la aplicación', () => {
     mount()
 
     expect(await screen.findByRole('heading', { name: 'Entrá a tu plata.' })).toBeInTheDocument()
-    expect(screen.queryByRole('navigation', { name: 'Secciones de Plata' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Secciones de Vector' })).not.toBeInTheDocument()
   })
 
   it('sin sesión no se piden datos financieros al backend', async () => {

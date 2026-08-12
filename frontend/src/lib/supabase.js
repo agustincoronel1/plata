@@ -22,7 +22,7 @@ if (!supabaseUrl || !supabasePublishableKey) {
 export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
   auth: {
     // La sesión sobrevive a recargar la pestaña: la guarda y la restaura el propio SDK.
-    // Plata no escribe ni lee tokens a mano en localStorage.
+    // Vector no escribe ni lee tokens a mano en localStorage.
     persistSession: true,
     // El access token dura poco; el SDK lo renueva solo con el refresh token.
     autoRefreshToken: true,

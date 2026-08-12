@@ -1,8 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Vector">
+  <title>Vector</title>
   <rect width="32" height="32" rx="10" fill="#a8f53c" />
-  <path d="M12 8.5v15" stroke="#0d0f0d" stroke-width="3" stroke-linecap="round" fill="none" />
+  <!-- Punto de origen: dónde estás hoy. -->
+  <circle cx="10.5" cy="21.5" r="2.6" fill="#0d0f0d" />
+  <!-- Trazo del vector: dirección y magnitud. -->
   <path
-    d="M12 8.5h4.6a4.7 4.7 0 0 1 0 9.4H12"
+    d="M12.6 19.4 21.4 10.6"
+    stroke="#0d0f0d"
+    stroke-width="3"
+    stroke-linecap="round"
+    fill="none"
+  />
+  <!-- Punta en escuadra: el destino. -->
+  <path
+    d="M15.8 9.4h6.8v6.8"
     stroke="#0d0f0d"
     stroke-width="3"
     stroke-linecap="round"

@@ -63,7 +63,7 @@ TEXT = "Gasté 25 lucas ayer en nafta con débito"
 
 LIMIT_MESSAGE = (
     "Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando las "
-    "funciones manuales de Plata y volver a consultar mañana."
+    "funciones manuales de Vector y volver a consultar mañana."
 )
 
 
@@ -696,7 +696,7 @@ def test_el_mensaje_del_429_usa_el_limite_configurado(
     assert mensaje.startswith(
         f"Llegaste al límite de {small_limit} consultas inteligentes por hoy."
     )
-    assert "funciones manuales de Plata" in mensaje
+    assert "funciones manuales de Vector" in mensaje
 
 
 def test_el_429_trae_retry_after_y_las_cabeceras_de_cuota(

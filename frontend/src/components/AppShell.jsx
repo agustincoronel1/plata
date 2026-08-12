@@ -6,7 +6,7 @@ import Icon from './Icon'
  * Estructura de la aplicación: barra lateral en desktop, header compacto, contenido y
  * navegación inferior en mobile.
  *
- * Plata es una sola pantalla con secciones, así que la navegación no cambia de ruta: lleva
+ * Vector es una sola pantalla con secciones, así que la navegación no cambia de ruta: lleva
  * a la sección correspondiente y marca cuál está activa. "Perfil" abre el formulario de
  * situación que ya existe.
  */
@@ -51,7 +51,7 @@ export default function AppShell({
         <div className="sidebar__inner">
           <BrandMark />
 
-          <nav className="sidebar__nav" aria-label="Secciones de Plata">
+          <nav className="sidebar__nav" aria-label="Secciones de Vector">
             <ul>
               {SECTIONS.map((item) => (
                 <li key={item.id}>
@@ -80,7 +80,7 @@ export default function AppShell({
           </nav>
 
           <p className="sidebar__footer">
-            Plata organiza y simula. No es asesoramiento financiero.
+            Vector organiza y simula. No es asesoramiento financiero.
           </p>
         </div>
       </aside>

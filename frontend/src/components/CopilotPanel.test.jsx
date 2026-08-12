@@ -36,7 +36,7 @@ describe('CopilotPanel', () => {
     }
     // El panel no dispara ninguna consulta al montarse.
     expect(api.chatCopilot).not.toHaveBeenCalled()
-    expect(screen.queryByText(/Pensando…/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/está analizando tus movimientos/i)).not.toBeInTheDocument()
   })
 
   it('los ejemplos desaparecen una vez que hay conversación', async () => {
@@ -206,7 +206,7 @@ describe('CopilotPanel', () => {
     await user.click(screen.getByRole('button', { name: /Enviar/i }))
 
     // Estado de carga visible; input y botón bloqueados hasta que llegue la respuesta.
-    expect(await screen.findByText(/Pensando…/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Vector está analizando tus movimientos/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/Escribile al copiloto/i)).toBeDisabled()
     const sendButton = screen.getByRole('button', { name: /Enviar/i })
     expect(sendButton).toBeDisabled()

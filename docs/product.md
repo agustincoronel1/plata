@@ -1,4 +1,4 @@
-# Plata — definición de producto
+# Vector — definición de producto
 
 ## Problema
 
@@ -35,7 +35,7 @@ patrimonio o finanzas compartidas entre varias personas.
 
 > No te dice solamente cuánto dinero tenés. Te dice cuánto podés usar.
 
-Plata toma el saldo, resta todo lo que ya está comprometido hasta fin de mes y devuelve
+Vector toma el saldo, resta todo lo que ya está comprometido hasta fin de mes y devuelve
 un número accionable: cuánto se puede gastar hoy sin comprometer el resto del mes.
 
 Tres decisiones de producto se derivan de eso:
@@ -113,7 +113,7 @@ inventado. Decisiones de producto que lo guían:
   `saldo − compromisos pendientes hasta el próximo ingreso − dinero protegido − margen de
   seguridad`. De ahí sale el número accionable: cuánto se puede gastar por día hasta cobrar,
   **truncando hacia abajo** para pecar de conservador. Si falta la fecha del próximo ingreso,
-  Plata lo dice y no calcula un diario poco confiable.
+  Vector lo dice y no calcula un diario poco confiable.
 
 - **Honestidad ante los números feos.** Si los compromisos y las reservas superan el saldo,
   la app no muestra un negativo como "disponible para gastar": muestra cero y explica cuánto
@@ -121,12 +121,12 @@ inventado. Decisiones de producto que lo guían:
   comprometido.
 
 - **Simular antes de gastar.** El usuario ingresa el total final de una compra en cuotas
-  (Plata **no** calcula intereses: usa el monto que la persona ya va a pagar) y ve el impacto
+  (Vector **no** calcula intereses: usa el monto que la persona ya va a pagar) y ve el impacto
   mes a mes, incluido si algún mes rompe sus reservas. Además compara empezar ahora contra
   empezar el mes siguiente. La conclusión es **neutral** —"dentro del margen" o "supera las
-  reservas"—: Plata no le dice a nadie que compre o no compre.
+  reservas"—: Vector no le dice a nadie que compre o no compre.
 
-- **No es asesoramiento financiero.** Plata es una herramienta de organización y simulación.
+- **No es asesoramiento financiero.** Vector es una herramienta de organización y simulación.
   Ayuda a ver, no reemplaza el criterio de la persona ni constituye consejo financiero.
 
 ## Restricciones técnicas
@@ -161,7 +161,7 @@ inventado. Decisiones de producto que lo guían:
 ## Decisiones de la primera experiencia
 
 - **Sin perfil no hay dashboard.** Mientras la API responda `404` en el perfil, se muestra una
-  pantalla de bienvenida que explica para qué sirve Plata y ofrece una única acción, que abre
+  pantalla de bienvenida que explica para qué sirve Vector y ofrece una única acción, que abre
   el formulario de perfil existente. No se renderiza el dashboard con ceros ni errores, y no
   se abre ningún modal automáticamente.
 - **Un estado vacío no es un error.** Cada sección explica qué falta y ofrece la acción que ya

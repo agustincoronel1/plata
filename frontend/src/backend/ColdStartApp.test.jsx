@@ -43,10 +43,10 @@ const { ApiError } = api
 
 const HEALTHY = { ok: true, version: '0.1.0', status: 200, waking: false }
 
-const WAKING_TEXT = /Estamos iniciando el servidor de Plata\./
+const WAKING_TEXT = /Estamos iniciando el servidor de Vector\./
 const LIMIT_MESSAGE =
   'Llegaste al límite de 10 consultas inteligentes por hoy. Podés seguir usando las ' +
-  'funciones manuales de Plata y volver a consultar mañana.'
+  'funciones manuales de Vector y volver a consultar mañana.'
 
 let harness
 
@@ -80,7 +80,7 @@ describe('el dashboard espera a que el backend esté disponible', () => {
     mountApp()
 
     // Sesión restaurada y pantalla de espera, pero ni una sola consulta financiera.
-    expect(await screen.findByText('Conectando con Plata…')).toBeInTheDocument()
+    expect(await screen.findByText('Conectando con Vector…')).toBeInTheDocument()
     expect(api.getProfile).not.toHaveBeenCalled()
     expect(api.getTransactions).not.toHaveBeenCalled()
     expect(api.getCommitments).not.toHaveBeenCalled()

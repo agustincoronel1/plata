@@ -1,6 +1,6 @@
 """Endpoints de autenticación: /api/v1/auth.
 
-Plata no emite ni guarda credenciales: el registro, el login y la renovación del token
+Vector no emite ni guarda credenciales: el registro, el login y la renovación del token
 ocurren en Supabase Auth. Acá solo se VERIFICA el token que llega y se responde quién es
 el usuario, para que el frontend pueda confirmar que el circuito cierra de punta a punta.
 """

@@ -289,7 +289,7 @@
       "missing": [
         "amount"
       ],
-      "explanation": "Detecté dólares, pero Plata solo trabaja con pesos (ARS)."
+      "explanation": "Detecté dólares, pero Vector solo trabaja con pesos (ARS)."
     },
     {
       "keys": [
@@ -307,7 +307,7 @@
       "missing": [
         "amount"
       ],
-      "explanation": "Detecté 'USD', pero Plata solo trabaja con pesos (ARS)."
+      "explanation": "Detecté 'USD', pero Vector solo trabaja con pesos (ARS)."
     },
     {
       "keys": [
