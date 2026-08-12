@@ -13,20 +13,19 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Any
 
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from app.ai.agent import nodes
+from app.ai.agent.checkpointer import (
+    close_checkpointer_pool,
+    get_checkpointer,
+)
 from app.ai.agent.state import AgentState
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 RECURSION_LIMIT = 12
-
-_postgres_cm: Any | None = None
 
 
 def build_graph():
@@ -54,55 +53,25 @@ def build_graph():
 
 @lru_cache(maxsize=1)
 def get_compiled_graph():
-    """Grafo compilado + checkpointer configurado, creado de forma perezosa."""
-    checkpointer = _build_checkpointer()
-    return build_graph().compile(checkpointer=checkpointer, interrupt_before=["apply_write"])
+    """Grafo compilado con el checkpointer configurado.
 
+    El grafo en sí no tiene estado y compilarlo es barato, pero se cachea porque el
+    checkpointer queda pegado a la instancia compilada: recompilar en cada petición
+    obligaría a resolver el saver una y otra vez.
 
-def _build_checkpointer():
-    if settings.ai_checkpoint_store == "memory":
-        return MemorySaver()
-
-    from langgraph.checkpoint.postgres import PostgresSaver
-
-    global _postgres_cm
-    if _postgres_cm is None:
-        conn_string = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
-        _postgres_cm = PostgresSaver.from_conn_string(conn_string)
-    saver = _postgres_cm.__enter__()
-    saver.setup()
-    _secure_checkpoint_tables(saver)
-    return saver
-
-
-def _secure_checkpoint_tables(saver: Any) -> None:
-    """Aplica RLS a las tablas del checkpointer apenas LangGraph las crea.
-
-    Las crea `saver.setup()`, no Alembic, así que la migración de RLS no puede activarlas si
-    todavía no existían cuando corrió. Llamar acá a la función que dejó esa migración cierra
-    esa ventana: las tablas quedan protegidas en el mismo arranque en que aparecen.
-
-    Es idempotente y best-effort. Si la función no está (base sin migrar, o un despliegue
-    donde el rol no puede hacer DDL), se registra y se sigue: el aislamiento del copiloto no
-    depende de esto —el `thread_id` ya lleva el `user_id` adentro— y no arrancar por esto
-    sería peor que arrancar.
+    Quién es ese saver y cómo se conecta lo decide `app.ai.agent.checkpointer`; acá solo se
+    lo pide. En modo postgres, si la base no está disponible, `get_checkpointer()` lanza
+    `CheckpointerUnavailableError` (503) en lugar de devolver uno en memoria.
     """
-    try:
-        with saver.conn.cursor() as cursor:
-            cursor.execute("SELECT public.plata_secure_langgraph_tables()")
-        saver.conn.commit()
-    except Exception:
-        logger.warning(
-            "No se pudo aplicar RLS a las tablas del checkpointer. Revisá que la migración "
-            "f2b3c4d5e6f7 esté aplicada y ejecutá "
-            "'SELECT public.plata_secure_langgraph_tables();' a mano.",
-            exc_info=True,
-        )
+    return build_graph().compile(checkpointer=get_checkpointer(), interrupt_before=["apply_write"])
 
 
 def close_checkpointer() -> None:
-    global _postgres_cm
-    if _postgres_cm is not None:
-        _postgres_cm.__exit__(None, None, None)
-        _postgres_cm = None
+    """Cierra el checkpointer y olvida el grafo compilado.
+
+    Lo llama el shutdown de la aplicación y los tests que necesitan simular un reinicio del
+    proceso. Hay que limpiar las dos cosas: el pool, para no dejar conexiones colgadas, y el
+    grafo cacheado, que si no seguiría apuntando al saver viejo.
+    """
+    close_checkpointer_pool()
     get_compiled_graph.cache_clear()

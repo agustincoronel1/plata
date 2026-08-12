@@ -25,11 +25,23 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
+    """Arranque y cierre del checkpointer del copiloto.
+
+    Se inicializa acá y no en la primera petición para que el DDL de `setup()` y la
+    aplicación de RLS ocurran una sola vez, con la aplicación todavía sin tráfico, en lugar
+    de en medio del primer mensaje de alguien.
+
+    Un fallo no impide arrancar: Plata funciona sin IA y tumbar todo porque el copiloto no
+    puede checkpointear sería peor. Queda registrado como error y el copiloto responde 503
+    hasta que la base vuelva. Lo que NO pasa es caer a memoria en silencio.
+    """
+    from app.ai.agent.checkpointer import start_checkpointer
+    from app.ai.agent.graph import close_checkpointer
+
+    start_checkpointer()
     try:
         yield
     finally:
-        from app.ai.agent.graph import close_checkpointer
-
         close_checkpointer()
 
 

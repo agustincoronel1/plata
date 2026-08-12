@@ -283,6 +283,44 @@ Las tablas del checkpointer las crea LangGraph en tiempo de ejecución, no Alemb
 migración deja una función idempotente, `public.plata_secure_langgraph_tables()`, que el
 backend vuelve a llamar después de `saver.setup()`; también se puede correr a mano.
 
+## Estado del copiloto (checkpointer)
+
+El estado conversacional —el historial multi-turn y, sobre todo, la **acción pendiente de
+aprobación**— vive en PostgreSQL, no en memoria. Si se perdiera, alguien que pidió registrar
+un gasto y no llegó a aprobarlo se quedaría con una acción imposible de resolver. En Render
+el proceso se reinicia y se duerme, y puede haber más de una instancia.
+
+Lo administra `app/ai/agent/checkpointer.py`:
+
+- **Un pool de conexiones** (`psycopg_pool`, ya venía como dependencia de
+  `langgraph-checkpoint-postgres`), no una conexión única. `PostgresSaver` acepta el pool y
+  saca una conexión por operación: las peticiones concurrentes no se serializan y, si una
+  conexión muere, el pool la reemplaza sola. No se abre una conexión por mensaje.
+- **Se inicializa en el arranque** (lifespan), no en la primera petición, así el DDL de
+  `setup()` y la aplicación de RLS no caen en medio del primer mensaje de alguien.
+- **`setup()` va detrás de un advisory lock.** `checkpoint_migrations.v` es `PRIMARY KEY` y
+  `setup()` lee-y-después-inserta, así que dos instancias arrancando a la vez contra una
+  base nueva aplicarían la misma migración y una moriría con clave duplicada.
+- **El pool se cierra en el shutdown.**
+
+Si PostgreSQL no está disponible, **la aplicación arranca igual** y solo el copiloto queda
+en 503 con un mensaje que dice que las funciones manuales siguen andando. Tumbar Plata
+entera porque el copiloto no puede checkpointear sería peor: el dashboard, los movimientos,
+los compromisos y las simulaciones no dependen de esto. Lo que **nunca** pasa es caer a
+memoria en silencio.
+
+`AI_CHECKPOINT_STORE` acepta exactamente dos valores y se valida al arrancar: `postgres`
+(por defecto, el único válido en producción) y `memory` (opt-in, solo para tests y
+desarrollo sin base). Un valor desconocido corta el arranque con un mensaje que dice cuáles
+son los permitidos; antes, cualquier cosa que no fuera `memory` caía en postgres y un typo
+funcionaba de casualidad.
+
+**Retención:** las tablas del checkpointer crecen con el uso y hoy **no se limpian nunca**.
+Es deliberado: borrar conversaciones viejas automáticamente podría llevarse una acción
+pendiente sin resolver. Antes de que el volumen moleste hay que definir una política de
+retención (por antigüedad del checkpoint, conservando los hilos con pausa activa) y recién
+ahí sumar el job.
+
 Todo esto tiene tests: `test_multiuser_isolation.py` y `test_ai_multiuser_isolation.py` para
 el backend, `test_rls_policies.py` para las políticas (hablando con PostgreSQL como lo haría
 PostgREST) y `test_endpoint_security_contract.py`, que barre la superficie HTTP y falla si
@@ -451,7 +489,8 @@ Git. Las variables están documentadas en los dos `.env.example`. Las más relev
 | `AI_PROVIDER` | `mock` | `mock` u `openai`. Con `mock` todo funciona sin API key. |
 | `AI_API_KEY` | vacía | Solo con proveedor real. Nunca se loguea ni se devuelve. |
 | `AI_EMBEDDING_PROVIDER` | `mock` | Embeddings del RAG. |
-| `AI_DRAFT_STORE` · `AI_CHECKPOINT_STORE` | `postgres` | `memory` para desarrollo sin base. |
+| `AI_DRAFT_STORE` | `postgres` | `memory` para desarrollo sin base. |
+| `AI_CHECKPOINT_STORE` | `postgres` | Estado del copiloto. Solo `postgres` o `memory`; otro valor no arranca. `memory` pierde las conversaciones y las aprobaciones pendientes al reiniciar: nunca en producción. |
 | `AI_DAILY_LIMIT` | `10` | Consultas inteligentes por cuenta y por día, para toda la IA. |
 | `AI_USAGE_TIMEZONE` | `America/Argentina/Buenos_Aires` | Zona del corte diario del contador. |
 | `AI_LOG_CONTENT` | `false` | Loguear contenido. Solo para depuración local. |

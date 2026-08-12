@@ -1,4 +1,9 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Modos válidos del checkpointer del copiloto. Vive acá y no en `app.ai.agent.checkpointer`
+# para que validar la configuración no obligue a importar LangGraph.
+CHECKPOINT_STORES = ("postgres", "memory")
 
 
 class Settings(BaseSettings):
@@ -49,8 +54,19 @@ class Settings(BaseSettings):
     # Store de borradores: "postgres" (persistente, ejecución normal) o "memory" (dev/tests
     # sin base). Los tests inyectan su propio store, así que este valor no los afecta.
     ai_draft_store: str = "postgres"
-    # Checkpoints del copiloto LangGraph: "postgres" en ejecución normal, "memory" para
-    # tests o desarrollo explícito sin persistencia entre procesos.
+    # Checkpoints del copiloto LangGraph. Dos valores y nada más:
+    #
+    # - "postgres" (por defecto): el estado de las conversaciones y las acciones pendientes
+    #   de aprobación viven en PostgreSQL. Es lo único válido en producción: sobrevive a los
+    #   reinicios de Render y lo comparten todas las instancias.
+    # - "memory": se pierde todo al reiniciar el proceso. Es OPT-IN y solo para tests y
+    #   desarrollo local sin base.
+    #
+    # El default seguro es "postgres": olvidarse de definir la variable no puede dejar
+    # producción sin persistencia. Un valor desconocido corta el arranque (ver el validador):
+    # antes, cualquier cosa que no fuera exactamente "memory" caía en postgres y un typo
+    # funcionaba de casualidad, sin que nadie se enterara de que la configuración que creía
+    # tener no era la que estaba corriendo.
     ai_checkpoint_store: str = "postgres"
     ai_agent_max_iterations: int = 5
     ai_rag_vector_max_distance: float = 0.75
@@ -138,6 +154,22 @@ class Settings(BaseSettings):
     # Vida del JWKS cacheado, en segundos. Ante un `kid` desconocido (rotación de claves)
     # el cliente refresca antes de este plazo; el TTL solo acota el uso de un set viejo.
     supabase_jwks_cache_seconds: int = 600
+
+    @field_validator("ai_checkpoint_store")
+    @classmethod
+    def _validate_checkpoint_store(cls, value: str) -> str:
+        """Corta el arranque ante un valor desconocido, en vez de elegir uno por su cuenta.
+
+        Es la diferencia entre "configuré memoria y no me di cuenta de que no tomó" y un
+        error que se lee en el primer log del despliegue.
+        """
+        normalized = (value or "").strip().lower()
+        if normalized not in CHECKPOINT_STORES:
+            raise ValueError(
+                f"AI_CHECKPOINT_STORE inválido: {value!r}. "
+                f"Valores permitidos: {', '.join(CHECKPOINT_STORES)}."
+            )
+        return normalized
 
     @property
     def cors_allowed_origins(self) -> list[str]:
