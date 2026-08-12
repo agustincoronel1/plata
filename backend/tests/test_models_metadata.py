@@ -34,7 +34,8 @@ MONEY_COLUMNS = {
 
 
 def test_existen_las_tablas_esperadas() -> None:
-    # Las cuatro tablas financieras + las tablas de IA/RAG + los contadores de uso.
+    # Las cuatro tablas financieras + las tablas de IA/RAG + los contadores de uso y de
+    # rate limiting.
     assert set(TABLES) == {
         "user_profiles",
         "transactions",
@@ -43,6 +44,7 @@ def test_existen_las_tablas_esperadas() -> None:
         "ai_drafts",
         "transaction_search_documents",
         "ai_daily_usage",
+        "rate_limit_counters",
     }
 
 
@@ -175,14 +177,23 @@ def test_result_es_jsonb() -> None:
 def test_identificadores_son_uuid() -> None:
     """Toda tabla con clave sustituta la usa como Uuid.
 
-    `ai_daily_usage` queda afuera a propósito: no tiene `id` porque su clave primaria es
-    natural y compuesta (usuario, día, tipo), que es justo lo que habilita el incremento
-    atómico del contador con un solo INSERT ... ON CONFLICT.
+    `ai_daily_usage` y `rate_limit_counters` quedan afuera a propósito: no tienen `id`
+    porque su clave primaria es natural y compuesta, que es justo lo que habilita el
+    incremento atómico del contador con un solo INSERT ... ON CONFLICT.
+
+    En `rate_limit_counters` el sujeto es un hash y no un UUID justamente para no guardar
+    IPs en claro (ver `app.core.rate_limit`), así que ahí no hay identificador de usuario
+    que comprobar.
     """
+    natural_keys = {
+        "ai_daily_usage": ["user_id", "usage_day", "kind"],
+        "rate_limit_counters": ["scope", "subject_hash", "window_start"],
+    }
     for name, table in TABLES.items():
-        if name == "ai_daily_usage":
-            assert [c.name for c in table.primary_key] == ["user_id", "usage_day", "kind"]
-            assert isinstance(table.columns["user_id"].type, Uuid)
+        if name in natural_keys:
+            assert [c.name for c in table.primary_key] == natural_keys[name]
+            if "user_id" in table.columns:
+                assert isinstance(table.columns["user_id"].type, Uuid)
             continue
         assert isinstance(table.columns["id"].type, Uuid)
 

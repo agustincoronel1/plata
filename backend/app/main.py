@@ -17,6 +17,7 @@ from app.api.router import api_router
 from app.api.routes import system
 from app.api.usage_headers import EXPOSED_HEADERS, apply_usage_headers_to_dict
 from app.core.config import settings
+from app.core.rate_limit import RATE_LIMIT_CODE, RateLimitExceededError
 from app.services.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,24 @@ def handle_ai_daily_limit(request: Request, exc: AIDailyLimitReachedError) -> JS
     # Envuelto en `detail` como el resto de la API: el frontend siempre lee ahí, sea un
     # string (los demás errores) o un objeto (este).
     return JSONResponse(status_code=exc.status_code, content={"detail": detail}, headers=headers)
+
+
+@app.exception_handler(RateLimitExceededError)
+def handle_rate_limit(request: Request, exc: RateLimitExceededError) -> JSONResponse:
+    """Demasiadas peticiones: 429 con `Retry-After`.
+
+    Mismo código HTTP que la cuota diaria de IA pero con otro `code`, para que el frontend
+    sepa cuál de los dos fue sin mirar el texto: uno se resuelve esperando unos segundos y
+    el otro recién mañana.
+
+    No se dice qué límite se alcanzó ni cuánto queda: eso le serviría a quien esté probando
+    hasta dónde puede llegar. El scope real queda en el log del servidor.
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": {"code": RATE_LIMIT_CODE, "message": exc.detail}},
+        headers={"Retry-After": str(exc.retry_after_seconds)},
+    )
 
 
 @app.exception_handler(SQLAlchemyError)

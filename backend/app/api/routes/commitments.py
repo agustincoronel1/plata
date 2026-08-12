@@ -13,6 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.rate_limits import write_user_limit
 from app.core.database import get_db
 from app.core.security import CurrentUser
 from app.schemas.commitment import (
@@ -24,6 +25,10 @@ from app.services import commitment_service
 
 router = APIRouter(prefix="/commitments", tags=["compromisos"])
 
+# Techo por cuenta para las escrituras. Son acciones MANUALES: no consumen cuota de IA
+# ni la rozan. El limite esta muy por encima del uso humano; solo frena la automatizacion.
+WRITE_LIMIT = [Depends(write_user_limit)]
+
 
 @router.get("", response_model=list[CommitmentResponse])
 def list_commitments(
@@ -33,7 +38,12 @@ def list_commitments(
     return commitment_service.list_commitments(db, user_id=current_user.id)
 
 
-@router.post("", response_model=CommitmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=CommitmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=WRITE_LIMIT,
+)
 def create_commitment(
     payload: CommitmentCreate,
     current_user: CurrentUser,
@@ -43,7 +53,7 @@ def create_commitment(
     return commitment_service.create_commitment(db, user_id=current_user.id, payload=payload)
 
 
-@router.patch("/{commitment_id}", response_model=CommitmentResponse)
+@router.patch("/{commitment_id}", response_model=CommitmentResponse, dependencies=WRITE_LIMIT)
 def update_commitment(
     commitment_id: UUID,
     payload: CommitmentUpdate,
@@ -56,7 +66,7 @@ def update_commitment(
     )
 
 
-@router.delete("/{commitment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{commitment_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=WRITE_LIMIT)
 def delete_commitment(
     commitment_id: UUID,
     current_user: CurrentUser,

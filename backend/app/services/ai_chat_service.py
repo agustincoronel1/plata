@@ -42,6 +42,7 @@ from app.ai.fast_path import match_fast_path
 from app.ai.gateway import get_ai_gateway
 from app.ai.trace import log_fast_path_hit, log_fast_path_miss
 from app.core.config import settings
+from app.core.timezone import app_today
 from app.schemas.ai_transaction import TransactionConfirmRequest
 from app.schemas.commitment import CommitmentCreate
 from app.services import ai_transaction_service, commitment_service, fast_path_service
@@ -76,7 +77,12 @@ def _context(
         session=session,
         draft_store=draft_store or get_draft_store(),
         gateway=gateway or get_ai_gateway(),
-        as_of=as_of or date.today(),
+        # `app_today()` y no `date.today()`: el "hoy" del copiloto tiene que ser el mismo
+        # que el del resto de la aplicación (la zona de negocio, `APP_TIMEZONE`). Render
+        # corre en UTC, así que con `date.today()` un mensaje de las 22:00 de Argentina se
+        # fechaba con el día siguiente: "agendá esto para mañana" caía dos días después, y
+        # un gasto registrado por chat quedaba en otro día que el mismo gasto cargado a mano.
+        as_of=as_of or app_today(),
         user_id=user_id,
     )
 
@@ -324,7 +330,15 @@ def _confirm_commitment(ctx: ToolContext, draft_id: uuid.UUID) -> str:
         if not same_transaction:
             tx_store.release_to_pending(draft_id, user_id=ctx.user_id)
         raise
-    return f"Agendé el compromiso {commitment.name} de {_fmt_money(commitment.amount)}."
+    # La confirmación repite los datos guardados, no un "listo" a secas: es la única forma
+    # de que la persona detecte al toque que la fecha o la categoría salieron mal.
+    confirmacion = (
+        f"Agendé {commitment.name} de {_fmt_money(commitment.amount)} "
+        f"en {commitment.category}, para el {commitment.due_date.isoformat()}"
+    )
+    if commitment.is_recurring:
+        confirmacion += ", todos los meses"
+    return confirmacion + "."
 
 
 def _bind_store_to_session(store: DraftStore, session: Session) -> tuple[DraftStore, bool]:

@@ -49,4 +49,33 @@ describe('CategoryChart', () => {
     render(<CategoryChart items={undefined} />)
     expect(screen.getByText(/Todavía no hay gastos este mes/i)).toBeInTheDocument()
   })
+
+  /**
+   * Datos anteriores a la normalización de categorías: el valor no está en el vocabulario
+   * fijo actual. El gráfico tiene que seguir apareciendo entero, no desaparecer por una
+   * sola fila rara ni dejar la porción sin nombre.
+   */
+  it('una categoría desconocida se dibuja y se muestra tal cual', () => {
+    const items = [
+      { category: 'comida', amount: '3000.00', percentage: '75.0' },
+      { category: 'gastronomia_2024', amount: '1000.00', percentage: '25.0' },
+    ]
+
+    const { container } = render(<CategoryChart items={items} />)
+
+    expect(container.querySelectorAll('.donut__slice')).toHaveLength(2)
+    const leyenda = screen.getByRole('list')
+    expect(within(leyenda).getByText('Comida')).toBeInTheDocument()
+    expect(within(leyenda).getByText('gastronomia_2024')).toBeInTheDocument()
+    expect(screen.getByText(/4\.000/)).toBeInTheDocument()
+  })
+
+  it('una categoría vacía cae en "Otros" en vez de quedar sin etiqueta', () => {
+    const { container } = render(
+      <CategoryChart items={[{ category: '', amount: '500.00', percentage: '100.0' }]} />,
+    )
+
+    expect(container.querySelectorAll('.donut__slice')).toHaveLength(1)
+    expect(within(screen.getByRole('list')).getByText('Otros')).toBeInTheDocument()
+  })
 })

@@ -4,6 +4,7 @@ import { getAIUsage, resetAIUsage } from './aiUsage'
 import {
   AI_LIMIT_MESSAGE,
   ApiError,
+  RATE_LIMIT_MESSAGE,
   UNAUTHORIZED_MESSAGE,
   chatCopilot,
   getCurrentUser,
@@ -197,6 +198,58 @@ describe('respuesta 429 (cuota diaria de IA)', () => {
     const onUnauthorized = vi.fn()
     setUnauthorizedHandler(onUnauthorized)
     fetchMock.mockResolvedValueOnce(jsonResponse({ detail: 'Sin cuota.' }, { status: 429 }))
+
+    await chatCopilot('hola').catch(() => {})
+
+    expect(onUnauthorized).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * El backend responde 429 por dos motivos distintos y los distingue con `detail.code`.
+ * Confundirlos no es cosmético: al de rate limit hay que esperarlo unos segundos, y al de
+ * cuota, hasta mañana. Mostrar el mensaje equivocado manda a la persona a esperar un día
+ * entero sin motivo, o a insistir contra un límite que no se destraba insistiendo.
+ */
+describe('respuesta 429 (rate limit)', () => {
+  const rateLimitDetail = {
+    code: 'rate_limit_exceeded',
+    message: 'Estás haciendo demasiadas peticiones. Esperá unos segundos y volvé a intentar.',
+  }
+
+  it('muestra el mensaje de rate limit y no el de la cuota diaria', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: rateLimitDetail }, { status: 429 }))
+
+    const error = await chatCopilot('hola').catch((failure) => failure)
+
+    expect(error.status).toBe(429)
+    expect(error.message).toBe(rateLimitDetail.message)
+    expect(error.message).not.toBe(AI_LIMIT_MESSAGE)
+  })
+
+  it('deja el `code` disponible para que la UI decida qué decir', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: rateLimitDetail }, { status: 429 }))
+
+    const error = await chatCopilot('hola').catch((failure) => failure)
+
+    expect(error.detail.code).toBe('rate_limit_exceeded')
+  })
+
+  it('sin `message`, usa el texto de rate limit según el `code`', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ detail: { code: 'rate_limit_exceeded' } }, { status: 429 }),
+    )
+
+    const error = await chatCopilot('hola').catch((failure) => failure)
+
+    expect(error.message).toBe(RATE_LIMIT_MESSAGE)
+    expect(error.message).not.toBe(AI_LIMIT_MESSAGE)
+  })
+
+  it('tampoco se confunde con una sesión caída', async () => {
+    const onUnauthorized = vi.fn()
+    setUnauthorizedHandler(onUnauthorized)
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: rateLimitDetail }, { status: 429 }))
 
     await chatCopilot('hola').catch(() => {})
 

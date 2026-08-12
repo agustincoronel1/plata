@@ -9,6 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.rate_limits import write_user_limit
 from app.core.database import get_db
 from app.core.security import CurrentUser
 from app.schemas.simulation import (
@@ -19,11 +20,16 @@ from app.services import simulation_service
 
 router = APIRouter(prefix="/simulations", tags=["simulaciones"])
 
+# Techo por cuenta para las escrituras. Son acciones MANUALES: no consumen cuota de IA
+# ni la rozan. El limite esta muy por encima del uso humano; solo frena la automatizacion.
+WRITE_LIMIT = [Depends(write_user_limit)]
+
 
 @router.post(
     "/purchase",
     response_model=PurchaseSimulationResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=WRITE_LIMIT,
     summary="Simular una compra en cuotas",
     description=(
         "Proyecta el impacto de una compra financiada mes a mes, la compara con empezar un "

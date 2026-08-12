@@ -11,6 +11,7 @@ la base: nada se escribe sin aprobación humana. `recursion_limit` acota los pas
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Any
 
@@ -20,6 +21,8 @@ from langgraph.graph import END, START, StateGraph
 from app.ai.agent import nodes
 from app.ai.agent.state import AgentState
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 RECURSION_LIMIT = 12
 
@@ -68,7 +71,33 @@ def _build_checkpointer():
         _postgres_cm = PostgresSaver.from_conn_string(conn_string)
     saver = _postgres_cm.__enter__()
     saver.setup()
+    _secure_checkpoint_tables(saver)
     return saver
+
+
+def _secure_checkpoint_tables(saver: Any) -> None:
+    """Aplica RLS a las tablas del checkpointer apenas LangGraph las crea.
+
+    Las crea `saver.setup()`, no Alembic, así que la migración de RLS no puede activarlas si
+    todavía no existían cuando corrió. Llamar acá a la función que dejó esa migración cierra
+    esa ventana: las tablas quedan protegidas en el mismo arranque en que aparecen.
+
+    Es idempotente y best-effort. Si la función no está (base sin migrar, o un despliegue
+    donde el rol no puede hacer DDL), se registra y se sigue: el aislamiento del copiloto no
+    depende de esto —el `thread_id` ya lleva el `user_id` adentro— y no arrancar por esto
+    sería peor que arrancar.
+    """
+    try:
+        with saver.conn.cursor() as cursor:
+            cursor.execute("SELECT public.plata_secure_langgraph_tables()")
+        saver.conn.commit()
+    except Exception:
+        logger.warning(
+            "No se pudo aplicar RLS a las tablas del checkpointer. Revisá que la migración "
+            "f2b3c4d5e6f7 esté aplicada y ejecutá "
+            "'SELECT public.plata_secure_langgraph_tables();' a mano.",
+            exc_info=True,
+        )
 
 
 def close_checkpointer() -> None:

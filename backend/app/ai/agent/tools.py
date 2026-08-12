@@ -105,11 +105,20 @@ class CreateTransactionArgs(BaseModel):
 
 
 class CreateCommitmentArgs(BaseModel):
+    """Argumentos del alta de un compromiso, validados antes de tocar nada.
+
+    `extra="forbid"` es lo que impide que el modelo cuele un campo de más —empezando por
+    `user_id`, que sale del ToolContext y de ningún otro lado. El monto es Decimal y > 0
+    con los mismos límites que la columna, y la fecha es un `date` real: una fecha
+    imposible ("30 de febrero") muere acá y no en PostgreSQL.
+    """
+
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=120)
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
     due_date: date
     category: str | None = Field(default=None, max_length=60)
+    is_recurring: bool = False
 
 
 def _fmt_money(value: Decimal) -> str:
@@ -318,16 +327,24 @@ def _create_commitment_draft(ctx: ToolContext, args: CreateCommitmentArgs) -> di
             "amount": str(args.amount),
             "due_date": args.due_date.isoformat(),
             "category": category,
+            "is_recurring": args.is_recurring,
         },
     }
     draft = ctx.draft_store.create(payload=payload, source_text=args.name, user_id=ctx.user_id)
+    # El resumen es lo único que la persona lee antes de aprobar, así que dice TODO lo que
+    # se va a escribir: monto, fecha, categoría y si se repite. Aprobar a ciegas un
+    # compromiso recurrente y descubrirlo después sería peor que no tener la función.
+    summary = (
+        f"compromiso {args.name} de {_fmt_money(args.amount)} en {category} "
+        f"para el {args.due_date.isoformat()}"
+    )
+    if args.is_recurring:
+        summary += " (todos los meses)"
     return {
         "draft_id": str(draft.draft_id),
         "kind": "create_commitment",
         "is_confirmable": True,
-        "summary": (
-            f"compromiso {args.name} de {_fmt_money(args.amount)} para {args.due_date.isoformat()}"
-        ),
+        "summary": summary,
         "fields": payload["fields"],
         "missing_fields": [],
     }

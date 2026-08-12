@@ -60,8 +60,22 @@ export const AI_LIMIT_MESSAGE =
   'funciones manuales de Plata y volver a consultar mañana.'
 
 /**
- * Texto del 429 de cuota diaria. El backend manda `detail` como objeto con `message`; si
- * por algún motivo no llega, se usa un texto propio en vez de mostrar algo técnico.
+ * Respaldo del texto del 429 de rate limit (demasiadas peticiones en poco tiempo). Es un
+ * problema distinto del anterior y se resuelve distinto: este se pasa esperando unos
+ * segundos, el de cuota recién mañana.
+ */
+export const RATE_LIMIT_MESSAGE =
+  'Estás haciendo demasiadas peticiones. Esperá unos segundos y volvé a intentar.'
+
+/** `code` estable del backend para el 429 de rate limit (ver app/core/rate_limit.py). */
+export const RATE_LIMIT_CODE = 'rate_limit_exceeded'
+
+/**
+ * Texto de un 429. Hay dos causas y NO se pueden confundir: la cuota diaria de IA y el rate
+ * limit. El backend las distingue con `detail.code`, no con el texto, que puede cambiar.
+ *
+ * Sin mirar el `code`, un 429 por ráfaga le diría a la persona que se quedó sin consultas
+ * inteligentes por hoy, que es falso y la haría esperar hasta mañana sin motivo.
  */
 function limitMessage(detail) {
   if (typeof detail === 'string') {
@@ -69,6 +83,9 @@ function limitMessage(detail) {
   }
   if (detail && typeof detail.message === 'string') {
     return detail.message
+  }
+  if (detail?.code === RATE_LIMIT_CODE) {
+    return RATE_LIMIT_MESSAGE
   }
   return AI_LIMIT_MESSAGE
 }
@@ -172,11 +189,13 @@ async function request(path, { method = 'GET', body, timeoutMs = DEFAULT_TIMEOUT
   }
 
   if (response.status === 429) {
-    // Cuota diaria de IA agotada. Un 429 no es una sesión caída: no se avisa a la capa de
-    // autenticación, así que no cierra sesión ni manda al login.
+    // Dos causas posibles: cuota diaria de IA agotada, o demasiadas peticiones seguidas.
+    // `limitMessage` las distingue por `detail.code`. Ninguna de las dos es una sesión
+    // caída: no se avisa a la capa de autenticación, así que no cierra sesión ni manda al
+    // login.
     throw new ApiError(limitMessage(payload?.detail), {
       status: 429,
-      // El objeto entero (kind, resets_at, code) queda disponible para la UI.
+      // El objeto entero (code, resets_at, limit) queda disponible para la UI.
       detail: typeof payload?.detail === 'object' ? payload.detail : null,
     })
   }

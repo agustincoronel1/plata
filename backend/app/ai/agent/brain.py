@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from datetime import date
 from decimal import Decimal
 from typing import Any, Protocol
 
@@ -177,6 +178,26 @@ ROUTING_RULES = (
 _INJECTION = ("ignora", "borra", "eliminá", "elimina", "instrucciones", "sos un asistente")
 _TX_VERBS = ("gaste", "pague", "compre", "cobre", "gane", "transferi", "me entro")
 
+# Verbos con los que se pide agendar algo a futuro. Todos en presente o imperativo, así que
+# no se pisan con `_TX_VERBS`, que registran algo YA ocurrido.
+_SCHEDULE_VERBS = (
+    "agenda",
+    "agendar",
+    "agregar",
+    "agrega",
+    "anotar",
+    "anota",
+    "recordame",
+    "recordar",
+)
+
+
+def _today() -> date:
+    """Hoy en la zona de negocio, igual que el resto de la aplicación."""
+    from app.core.timezone import app_today
+
+    return app_today()
+
 
 class MockAgentBrain:
     """Clasificador determinístico + redactor grounded, sin coste."""
@@ -230,17 +251,22 @@ class MockAgentBrain:
             or "compromiso" in n
             or "alquiler" in n
             or "aumenta" in n
+            # Verbos de agendar. Sin esto, "agendá netflix para el 20" no se reconocía como
+            # alta de compromiso y la conversación no llegaba a ninguna parte. No chocan con
+            # `_TX_VERBS`, que son todos en pasado ("gasté", "pagué").
+            or any(verb in n for verb in _SCHEDULE_VERBS)
         ):
-            commitment_amount = amount if looks_like_money(n) else None
-            args["amount"] = str(commitment_amount) if commitment_amount is not None else None
-            missing = []
-            if commitment_amount is None:
-                missing.append("amount")
-            if "vence" not in n:
-                missing.append("due_date")
-            if not any(word in n for word in ("alquiler", "obra social", "colegio", "internet")):
-                missing.append("name")
-            args["missing_fields"] = missing
+            # Qué falta lo decide la MISMA extracción que después arma el borrador, en vez de
+            # una lista de nombres aparte: antes acá se repetían los cuatro conceptos
+            # hardcodeados del router, así que el clasificador podía decir "me falta el
+            # nombre" de algo que el router sí sabía leer, y viceversa.
+            #
+            # El import es diferido porque `router` importa `extract_amount` de este módulo.
+            from app.ai.agent.router import extract_commitment_fields
+
+            campos = extract_commitment_fields(message, {}, _today(), None)
+            args["amount"] = campos.get("amount")
+            args["missing_fields"] = campos["missing_fields"]
             return {"intent": AgentIntent.CREATE_COMMITMENT, "confidence": 0.7, "args": args}
 
         if "pagos" in n or "compromisos" in n or "vencimientos" in n or "antes de cobrar" in n:

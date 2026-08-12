@@ -45,6 +45,13 @@ OTHER_USER_ID = UUID("22222222-2222-4222-8222-222222222222")
 OTHER_USER_EMAIL = "otra-persona@plata.test"
 settings.ai_checkpoint_store = "memory"
 
+# El rate limiting queda APAGADO para la suite general. No es que no se pruebe: tiene sus
+# propios tests (test_rate_limiting.py) que lo encienden a propósito y bajan los límites.
+# Dejarlo activo acá haría que un módulo con muchas peticiones agotara el techo por IP y
+# empezara a devolver 429 en tests que no tienen nada que ver, que es exactamente el tipo de
+# fallo intermitente que no se quiere depurar.
+settings.rate_limit_enabled = False
+
 # Los tests NUNCA hablan con un proveedor real, pase lo que pase en backend/.env. Con
 # AI_PROVIDER=openai y una API key configurada, correr `pytest` gastaría plata de
 # verdad y dejaría de ser determinístico. Forzar los proveedores mock acá deja la suite

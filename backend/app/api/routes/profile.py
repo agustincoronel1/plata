@@ -10,12 +10,17 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.api.rate_limits import write_user_limit
 from app.core.database import get_db
 from app.core.security import CurrentUser
 from app.schemas.profile import ProfileResponse, ProfileUpdate
 from app.services import profile_service
 
 router = APIRouter(prefix="/profile", tags=["perfil"])
+
+# Techo por cuenta para las escrituras. Son acciones MANUALES: no consumen cuota de IA
+# ni la rozan. El limite esta muy por encima del uso humano; solo frena la automatizacion.
+WRITE_LIMIT = [Depends(write_user_limit)]
 
 
 @router.get("", response_model=ProfileResponse)
@@ -30,7 +35,7 @@ def read_profile(
     return profile_service.get_profile(db, user_id=current_user.id)
 
 
-@router.put("", response_model=ProfileResponse)
+@router.put("", response_model=ProfileResponse, dependencies=WRITE_LIMIT)
 def upsert_profile(
     payload: ProfileUpdate,
     current_user: CurrentUser,

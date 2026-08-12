@@ -242,6 +242,71 @@ anterior y aplica el nuevo, borrar revierte. Todo en un único commit, con el pe
 bloqueado con `SELECT ... FOR UPDATE`. Los compromisos, en cambio, nunca modifican el
 saldo: marcarlos como pagados es solo un cambio de estado.
 
+## Aislamiento entre cuentas
+
+El aislamiento se sostiene en **dos barreras independientes**, y cada una cubre un camino
+distinto:
+
+**1. El backend (repositorio).** El `user_id` sale exclusivamente del `sub` de un JWT con la
+firma verificada contra el JWKS de Supabase. El cliente no lo manda nunca: no se acepta por
+body, ni por query, ni por header, y ninguna tool del copiloto lo declara en su schema. Cada
+consulta lleva el filtro por dueño en la MISMA sentencia que el id, así que un recurso ajeno
+responde 404 igual que uno inexistente y no se puede averiguar si existe. En el copiloto, el
+hilo del checkpointer es `<user_id>:<conversation_id>`: un `conversation_id` ajeno resuelve
+un hilo vacío.
+
+**2. Row Level Security (PostgreSQL).** Protege el camino que NO pasa por el backend. Si la
+base es la de Supabase, PostgREST publica el schema `public` y la publishable key viaja en el
+bundle del frontend: sin RLS, cualquiera pide las tablas y se lleva los datos de todos. Las
+políticas comparan contra `auth.uid()`, con `USING` y `WITH CHECK`.
+
+Las dos barreras hacen falta y ninguna reemplaza a la otra. El backend **no** está sujeto a
+RLS —se conecta con el rol dueño de las tablas, y no se usa `FORCE ROW LEVEL SECURITY`— y eso
+es deliberado: forzarlo lo dejaría sin ver una sola fila, porque nunca define
+`request.jwt.claims`.
+
+Qué puede hacer un cliente directo, por tabla:
+
+| Tabla | SELECT | INSERT / UPDATE / DELETE |
+| --- | --- | --- |
+| `user_profiles`, `transactions`, `commitments`, `purchase_simulations` | lo propio | lo propio |
+| `ai_drafts`, `ai_daily_usage`, `transaction_search_documents` | lo propio | **nadie** |
+| `rate_limit_counters` | nadie | nadie |
+| `checkpoints`, `checkpoint_blobs`, `checkpoint_writes` | lo propio (por `thread_id`) | nadie |
+| `checkpoint_migrations` | nadie | nadie |
+
+Las tres del medio son de solo lectura a propósito: una política de escritura sobre
+`ai_daily_usage` dejaría poner `used = 0` y darse cuota infinita de IA, y una sobre
+`ai_drafts` permitiría saltarse la confirmación atómica de un borrador.
+
+Las tablas del checkpointer las crea LangGraph en tiempo de ejecución, no Alembic. La
+migración deja una función idempotente, `public.plata_secure_langgraph_tables()`, que el
+backend vuelve a llamar después de `saver.setup()`; también se puede correr a mano.
+
+Todo esto tiene tests: `test_multiuser_isolation.py` y `test_ai_multiuser_isolation.py` para
+el backend, `test_rls_policies.py` para las políticas (hablando con PostgreSQL como lo haría
+PostgREST) y `test_endpoint_security_contract.py`, que barre la superficie HTTP y falla si
+aparece un endpoint sin sesión.
+
+## Rate limiting
+
+Acota **cuántas peticiones** entran, que es un problema distinto de cuánta IA se gasta. Los
+contadores viven en PostgreSQL (`rate_limit_counters`) y no en memoria: en Render el proceso
+se reinicia y puede haber más de una instancia, así que un contador en memoria se perdería y
+cada instancia contaría por su lado. Se usa la misma técnica atómica que la cuota diaria
+(`INSERT ... ON CONFLICT DO UPDATE ... WHERE count < limite`), así que no hace falta Redis.
+
+Hay límites por IP (toda la API, `/auth` y las operaciones de IA) y por cuenta autenticada
+(IA y escrituras). Las IP nunca se guardan en claro: se hashean con HMAC-SHA256 usando
+`RATE_LIMIT_IP_HASH_SECRET`, y las ventanas vencidas se borran solas.
+
+Al pasarse, la respuesta es 429 con `Retry-After` y `detail.code = "rate_limit_exceeded"`,
+distinto del `daily_ai_limit_reached` de la cuota: uno se resuelve esperando unos segundos y
+el otro recién mañana, y el frontend muestra el mensaje que corresponde.
+
+El registro y el login **no** pasan por este backend —los atiende Supabase Auth—, así que sus
+límites se configuran en el panel de Supabase.
+
 ## Límite diario de consultas inteligentes
 
 Cada llamada al modelo cuesta plata, así que hay **una** cuota diaria por cuenta —10 por
@@ -391,6 +456,15 @@ Git. Las variables están documentadas en los dos `.env.example`. Las más relev
 | `AI_USAGE_TIMEZONE` | `America/Argentina/Buenos_Aires` | Zona del corte diario del contador. |
 | `AI_LOG_CONTENT` | `false` | Loguear contenido. Solo para depuración local. |
 | `SUPABASE_JWKS_URL` · `_ISSUER` · `_AUDIENCE` | — | Verificación del token. No son secretos. |
+| `RATE_LIMIT_ENABLED` | `true` | Interruptor general del rate limiting. |
+| `RATE_LIMIT_IP_HASH_SECRET` | vacía | **Secreto.** Clave para hashear la IP. Definirla en producción. |
+| `RATE_LIMIT_IP_PER_MINUTE` | `120` | Techo general por IP sobre toda la API. |
+| `RATE_LIMIT_AUTH_IP_PER_MINUTE` | `30` | Techo por IP en `/auth`. |
+| `RATE_LIMIT_AI_USER_PER_MINUTE` | `10` | Peticiones de IA por cuenta y por minuto. |
+| `RATE_LIMIT_AI_IP_PER_HOUR` | `60` | Peticiones de IA por IP y por hora. |
+| `RATE_LIMIT_WRITE_USER_PER_MINUTE` | `60` | Escrituras del dominio por cuenta y por minuto. |
+| `RATE_LIMIT_TRUST_FORWARDED_FOR` | `true` | Leer la IP de `X-Forwarded-For`. En Render hace falta. |
+| `RATE_LIMIT_FORWARDED_DEPTH` | `1` | Cuántos proxies hay delante. |
 
 Si `AI_PROVIDER=openai` apunta a un modelo `mock-*`, el backend rechaza la configuración.
 
@@ -398,13 +472,16 @@ Si `AI_PROVIDER=openai` apunta a un modelo `mock-*`, el backend rechaza la confi
 
 El MVP está completo y validado contra OpenAI real. Lo que todavía no está:
 
-- Rate limiting por IP. Los límites diarios son por cuenta, y crear cuentas es gratis, así
-  que antes de exponer una demo pública hace falta eso más CAPTCHA y verificación de mail.
-- Row Level Security en Supabase. El aislamiento hoy lo garantiza el backend.
+- CAPTCHA y verificación de mail en el registro. Ya hay rate limiting por IP y por cuenta,
+  pero crear cuentas sigue siendo gratis: el registro lo atiende Supabase Auth, así que esos
+  límites se configuran en su panel y no en este backend.
 - Login con Google, recuperación de contraseña y eliminación de cuenta.
 - Índice ANN para pgvector: la búsqueda vectorial es exacta, suficiente para este volumen.
-- La extracción de compromisos desde el chat cubre patrones simples y pregunta lo que falta
-  en vez de inventarlo.
+- La extracción de compromisos desde el chat es por reglas, no por modelo: entiende nombres
+  libres ("netflix", "la factura de luz"), montos con o sin unidad coloquial y fechas
+  relativas ("mañana", "el mes que viene", "en 10 días", "el viernes"), pero ante un dato
+  que no encuentra lo pregunta en vez de inventarlo. Una frase muy retorcida puede quedar
+  sin entender y termina en una repregunta.
 
 Fuera de alcance por decisión, no por tiempo: voz, imágenes, OCR, PDFs, extractos
 bancarios, múltiples monedas y finanzas compartidas.

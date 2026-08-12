@@ -74,6 +74,55 @@ class Settings(BaseSettings):
     # está definida acá: no depende de la zona del servidor ni de la del navegador.
     ai_usage_timezone: str = "America/Argentina/Buenos_Aires"
 
+    # --- Rate limiting ---
+    # Protección de abuso para la beta pública. Es una cosa DISTINTA de `ai_daily_limit`:
+    # aquella acota cuánta IA consume una cuenta por día (costo), esta acota cuántas
+    # peticiones por minuto entran (abuso). Una acción manual normal nunca toca la cuota de
+    # IA, y estos límites están puestos muy por encima del uso humano razonable.
+    #
+    # Los contadores viven en PostgreSQL (tabla `rate_limit_counters`), no en memoria: en
+    # Render el proceso se reinicia y puede haber más de una instancia, y un contador en
+    # memoria se perdería en cada reinicio y contaría por separado en cada instancia, que es
+    # justo lo que vuelve inútil un límite.
+    rate_limit_enabled: bool = True
+
+    # Techo general por IP sobre toda la API. Alto a propósito: es una red de contención
+    # contra scripts, no un límite que una persona usando la aplicación pueda alcanzar.
+    rate_limit_ip_per_minute: int = 120
+
+    # Endpoints que llaman al modelo (parse y chat). Son los que cuestan plata, así que
+    # llevan doble límite: por cuenta y por IP, para que crear cuentas gratis no alcance
+    # para multiplicar el gasto.
+    rate_limit_ai_user_per_minute: int = 10
+    rate_limit_ai_ip_per_hour: int = 60
+
+    # Escrituras del dominio (movimientos, compromisos, perfil, simulaciones) por cuenta.
+    # Muy por encima de lo que hace una persona: solo frena la automatización.
+    rate_limit_write_user_per_minute: int = 60
+
+    # Endpoints sensibles alcanzables sin sesión válida, como /auth/me. El registro y el
+    # login NO pasan por este backend (los atiende Supabase Auth y tiene sus propios
+    # límites), así que acá se acota lo único expuesto de nuestro lado: la verificación de
+    # tokens, que es lo que usaría alguien para probar credenciales contra la API.
+    rate_limit_auth_ip_per_minute: int = 30
+
+    # Clave para hashear la IP antes de guardarla. NUNCA se persiste una IP en claro: la
+    # tabla solo guarda un HMAC-SHA256. Sin clave el hash sigue siendo irreversible, pero el
+    # espacio de IPs es chico y se podría recorrer entero, así que en producción hay que
+    # definirla. Es un secreto: va en el entorno de Render, no en el repositorio.
+    rate_limit_ip_hash_secret: str = ""
+
+    # Si se confía en `X-Forwarded-For` para saber la IP real. En Render el backend está
+    # detrás de un proxy y la IP de la conexión es siempre la del proxy, así que hace falta.
+    # En un despliegue sin proxy debe quedar en false: si no, cualquiera manda el header y
+    # se inventa una IP distinta en cada petición para esquivar el límite.
+    rate_limit_trust_forwarded_for: bool = True
+
+    # Cuántos proxies hay delante. Se toma la entrada N-ésima contando DESDE LA DERECHA de
+    # `X-Forwarded-For`, que es la única parte que el cliente no puede falsificar: cada proxy
+    # agrega al final, así que lo de la izquierda puede venir escrito por quien llama.
+    rate_limit_forwarded_depth: int = 1
+
     # --- Autenticación (Supabase Auth) ---
     # Sin valores por defecto reales: el backend arranca igual sin configurarlas, y recién
     # al pedir un endpoint protegido se responde 503 con un mensaje claro. Ninguna de estas

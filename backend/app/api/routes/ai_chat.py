@@ -25,6 +25,7 @@ from app.ai.agent.schemas import (
     ConversationResponse,
 )
 from app.ai.gateway import AIGateway, get_ai_gateway
+from app.api.rate_limits import ai_ip_limit, ai_user_limit
 from app.api.usage_headers import apply_usage_headers, with_usage
 from app.core.database import get_db
 from app.core.security import CurrentUser
@@ -32,10 +33,19 @@ from app.schemas.ai_usage import AIUsageResponse
 from app.services import ai_chat_service, ai_usage_service
 from app.services.draft_store import DraftStore, get_draft_store
 
-router = APIRouter(prefix="/ai", tags=["ai-copiloto"])
+# El límite por IP y por hora va en el router para que se resuelva antes que el token.
+router = APIRouter(prefix="/ai", tags=["ai-copiloto"], dependencies=[Depends(ai_ip_limit)])
 
 
-@router.post("/chat", response_model=ChatResponse, summary="Hablar con el copiloto")
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    summary="Hablar con el copiloto",
+    # Límite por cuenta, aparte de la cuota diaria: la cuota acota el gasto del día y esto
+    # acota la ráfaga. Se cuenta el intento aunque el turno lo resuelva el fast path sin
+    # llamar al modelo, porque igual costó una petición.
+    dependencies=[Depends(ai_user_limit)],
+)
 def chat(
     payload: ChatRequest,
     current_user: CurrentUser,

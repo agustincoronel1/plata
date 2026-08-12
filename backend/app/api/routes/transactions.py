@@ -14,6 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.rate_limits import write_user_limit
 from app.core.database import get_db
 from app.core.security import CurrentUser
 from app.schemas.transaction import (
@@ -25,6 +26,11 @@ from app.services import transaction_service
 
 router = APIRouter(prefix="/transactions", tags=["movimientos"])
 
+# Techo por cuenta para las escrituras. Son acciones MANUALES: no consumen cuota de IA ni
+# la rozan. El límite está muy por encima de lo que hace una persona (ver
+# `RATE_LIMIT_WRITE_USER_PER_MINUTE`); solo frena la automatización.
+WRITE_LIMIT = [Depends(write_user_limit)]
+
 
 @router.get("", response_model=list[TransactionResponse])
 def list_transactions(
@@ -34,7 +40,12 @@ def list_transactions(
     return transaction_service.list_transactions(db, user_id=current_user.id)
 
 
-@router.post("", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=TransactionResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=WRITE_LIMIT,
+)
 def create_transaction(
     payload: TransactionCreate,
     current_user: CurrentUser,
@@ -44,7 +55,7 @@ def create_transaction(
     return transaction_service.create_transaction(db, user_id=current_user.id, payload=payload)
 
 
-@router.patch("/{transaction_id}", response_model=TransactionResponse)
+@router.patch("/{transaction_id}", response_model=TransactionResponse, dependencies=WRITE_LIMIT)
 def update_transaction(
     transaction_id: UUID,
     payload: TransactionUpdate,
@@ -57,7 +68,9 @@ def update_transaction(
     )
 
 
-@router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=WRITE_LIMIT
+)
 def delete_transaction(
     transaction_id: UUID,
     current_user: CurrentUser,

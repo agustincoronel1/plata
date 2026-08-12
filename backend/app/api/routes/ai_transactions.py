@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.ai.gateway import AIGateway, get_ai_gateway
+from app.api.rate_limits import ai_ip_limit, ai_user_limit
 from app.api.usage_headers import apply_usage_headers, with_usage
 from app.core.database import get_db
 from app.core.security import CurrentUser
@@ -37,7 +38,11 @@ from app.schemas.ai_transaction import (
 from app.services import ai_transaction_service, ai_usage_service
 from app.services.draft_store import DraftStore, get_draft_store
 
-router = APIRouter(prefix="/ai/transactions", tags=["ai-transactions"])
+router = APIRouter(
+    prefix="/ai/transactions",
+    tags=["ai-transactions"],
+    dependencies=[Depends(ai_ip_limit)],
+)
 
 
 @router.post(
@@ -50,6 +55,9 @@ router = APIRouter(prefix="/ai/transactions", tags=["ai-transactions"])
         "una persona confirma. Requiere sesión: sin token no se llama al modelo. Tiene "
         "cuota diaria: al agotarla responde 429."
     ),
+    # Límite por cuenta además de la cuota diaria: la cuota acota el gasto del día, esto
+    # acota la ráfaga.
+    dependencies=[Depends(ai_user_limit)],
 )
 def parse_transaction(
     payload: TransactionParseRequest,
