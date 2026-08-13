@@ -56,7 +56,7 @@ class ExplodingBrain:
     turno entró a LangGraph en lugar de resolverse por el atajo.
     """
 
-    def classify(self, message: str, history: list[dict]) -> dict:
+    def classify(self, message: str, history: list[dict], context: dict | None = None) -> dict:
         raise AssertionError("El fast path entró al grafo de LangGraph")
 
     def answer(self, intent: AgentIntent, context: dict) -> str:
@@ -153,6 +153,28 @@ def test_expense_de_hoy_no_cuenta_los_dias_anteriores(
     assert "$10.000" in body["answer"]
     assert "hoy" in body["answer"]
     assert "$87.000" not in body["answer"]
+
+
+def test_el_mes_pasado_no_devuelve_el_total_del_mes_en_curso(
+    fast_client: TestClient, make_profile: Callable[..., dict]
+) -> None:
+    """El error era silencioso: la respuesta llegaba con confianza y con el total de agosto.
+
+    "El mes pasado" no estaba en el vocabulario de períodos, así que caía en el default (el
+    mes en curso) y nadie se enteraba de que había contestado otra pregunta.
+    """
+    make_profile()
+    today = app_today()
+    ultimo_del_mes_pasado = today.replace(day=1) - timedelta(days=1)
+    _expense(fast_client, "30000.00", "comida", occurred_on=today.isoformat())
+    _expense(fast_client, "70000.00", "comida", occurred_on=ultimo_del_mes_pasado.isoformat())
+
+    body = _ask(fast_client, "¿cuánto gasté el mes pasado?")
+
+    assert "$70.000" in body["answer"], body["answer"]
+    assert "$30.000" not in body["answer"]
+    assert "$100.000" not in body["answer"]
+    assert "mes pasado" in body["answer"]
 
 
 def test_income_total_del_mes(fast_client: TestClient, make_profile: Callable[..., dict]) -> None:

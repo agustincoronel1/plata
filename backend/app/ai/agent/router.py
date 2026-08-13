@@ -1,14 +1,25 @@
-"""Ruteo de intención a plan de tools. Determinístico y acotado."""
+"""Ruteo de intención a plan de tools. Determinístico y acotado.
+
+Dos responsabilidades:
+
+1. **Qué ruta es** (`route_for`): si la respuesta depende de datos de la persona, si es una
+   simulación, una escritura o charla. La ruta la decide la intención, no el texto.
+2. **Qué falta para poder resolverla** (`plan`). Que falte un dato NO es un error ni un
+   plan vacío: es un `Plan` con `missing_fields`, y con los slots ya completados guardados
+   para el turno siguiente. Antes, "¿puedo comprar una notebook en 9 cuotas?" devolvía una
+   lista de tools vacía, indistinguible de una falla, y terminaba en el mensaje de error.
+"""
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
 from app.ai.agent.brain import extract_amount
-from app.ai.agent.schemas import AgentIntent
+from app.ai.agent.schemas import AgentIntent, AgentRoute
 from app.services.categorizer import resolve_expense_category
 from app.services.financial_engine import add_months
 
@@ -74,20 +85,227 @@ _RECURRING = re.compile(
 # Intenciones que implican una escritura (se pausan para aprobación).
 WRITE_INTENTS = {AgentIntent.CREATE_TRANSACTION, AgentIntent.CREATE_COMMITMENT}
 
+# Qué clase de turno es cada intención. Lo que no está acá es charla: `route_for` devuelve
+# CONVERSATIONAL, que es una ruta válida y no un descarte.
+_ROUTES: dict[AgentIntent, AgentRoute] = {
+    AgentIntent.DASHBOARD_SUMMARY: AgentRoute.DETERMINISTIC,
+    AgentIntent.EXPLAIN_AVAILABLE_MONEY: AgentRoute.DETERMINISTIC,
+    AgentIntent.DAILY_BUDGET: AgentRoute.DETERMINISTIC,
+    AgentIntent.LIST_COMMITMENTS: AgentRoute.DETERMINISTIC,
+    AgentIntent.SEARCH_HISTORY: AgentRoute.DETERMINISTIC,
+    AgentIntent.SPENDING_SUMMARY: AgentRoute.DETERMINISTIC,
+    # No pide tools: reusa lo que ya se calculó y verificó en el turno anterior.
+    AgentIntent.EXPLAIN_LAST_ANSWER: AgentRoute.DETERMINISTIC,
+    AgentIntent.ONE_TIME_PURCHASE: AgentRoute.SIMULATION,
+    AgentIntent.SIMULATE_PURCHASE: AgentRoute.SIMULATION,
+    AgentIntent.COMPARE_PURCHASE_DATES: AgentRoute.SIMULATION,
+    AgentIntent.CREATE_TRANSACTION: AgentRoute.ACTION,
+    AgentIntent.CREATE_COMMITMENT: AgentRoute.ACTION,
+    AgentIntent.CONVERSATIONAL: AgentRoute.CONVERSATIONAL,
+    AgentIntent.UNKNOWN: AgentRoute.UNSUPPORTED,
+}
+
+# Datos sin los cuales la intención no se puede resolver. El orden es el que se usa para
+# preguntar, así "me falta el monto y la fecha" sale siempre en el mismo orden.
+REQUIRED_SLOTS: dict[AgentIntent, tuple[str, ...]] = {
+    AgentIntent.ONE_TIME_PURCHASE: ("amount",),
+    AgentIntent.SIMULATE_PURCHASE: ("amount", "installments"),
+    AgentIntent.COMPARE_PURCHASE_DATES: ("amount", "installments"),
+    AgentIntent.CREATE_COMMITMENT: ("name", "amount", "due_date"),
+}
+
+# Slots que se conservan entre turnos aunque no sean obligatorios (dan naturalidad: poder
+# decir "la notebook" en vez de "el producto").
+_OPTIONAL_SLOTS: dict[AgentIntent, tuple[str, ...]] = {
+    AgentIntent.ONE_TIME_PURCHASE: ("item", "category"),
+    AgentIntent.SIMULATE_PURCHASE: ("item",),
+    AgentIntent.COMPARE_PURCHASE_DATES: ("item",),
+}
+
+
+def route_for(intent: AgentIntent) -> AgentRoute:
+    """Ruta de una intención. Lo desconocido es charla, no falla."""
+    return _ROUTES.get(intent, AgentRoute.CONVERSATIONAL)
+
+
+def needs_user_data(intent: AgentIntent) -> bool:
+    """Si responder honestamente exige leer los datos de la persona.
+
+    Es la regla que decide si se consulta SQL: "¿qué es un gasto fijo?" no la necesita,
+    "¿cuánto gasto yo en gastos fijos?" sí. No se consulta la base por las dudas.
+    """
+    return route_for(intent) in (AgentRoute.DETERMINISTIC, AgentRoute.SIMULATION)
+
+
+@dataclass(frozen=True)
+class Plan:
+    """Qué ejecutar este turno y qué quedó pendiente.
+
+    `missing_fields` no vacío significa que hay que PREGUNTAR, no que algo salió mal.
+    `slots` es lo que ya se sabe (de este turno y de los anteriores) y viaja al checkpoint
+    para que el turno siguiente complete en vez de arrancar de cero.
+    """
+
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    missing_fields: list[str] = field(default_factory=list)
+    slots: dict[str, Any] | None = None
+
+    @property
+    def needs_clarification(self) -> bool:
+        return bool(self.missing_fields) and not self.tool_calls
+
+
+def plan(
+    intent: AgentIntent,
+    message: str,
+    args: dict[str, Any],
+    as_of: date,
+    last_simulation: dict[str, Any] | None = None,
+    pending: dict[str, Any] | None = None,
+) -> Plan:
+    """Plan del turno: tools a ejecutar, datos que faltan y slots acumulados.
+
+    `pending` es el `pending_request` del turno anterior (misma forma que `Plan.slots`):
+    con él, "1.200.000" a secas completa la simulación que quedó a medias.
+    """
+    if args.get("_tool_calls"):
+        return Plan(
+            tool_calls=[
+                {"name": call["name"], "arguments": call.get("arguments", {})}
+                for call in args["_tool_calls"]
+            ]
+        )
+
+    if intent in REQUIRED_SLOTS:
+        return _plan_with_slots(intent, message, args, as_of, last_simulation, pending)
+
+    return Plan(tool_calls=plan_tools(intent, message, args, as_of, last_simulation))
+
+
+def _plan_with_slots(
+    intent: AgentIntent,
+    message: str,
+    args: dict[str, Any],
+    as_of: date,
+    last_simulation: dict[str, Any] | None,
+    pending: dict[str, Any] | None,
+) -> Plan:
+    """Completa los datos de la intención con lo que ya se sabía y arma el plan."""
+    previous = _previous_fields(intent, pending)
+
+    if intent is AgentIntent.CREATE_COMMITMENT:
+        fields = extract_commitment_fields(message, args, as_of, previous or None)
+        missing = list(fields["missing_fields"])
+    else:
+        fields = _purchase_fields(intent, args, previous, last_simulation)
+        missing = [name for name in REQUIRED_SLOTS[intent] if fields.get(name) in (None, "")]
+
+    slots = {"intent": intent.value, "fields": fields, "missing_fields": missing}
+    if missing:
+        # Falta un dato: no se ejecuta nada y se recuerda lo que ya se sabe. El turno
+        # siguiente trae el dato que falta y completa, sin repetir la pregunta entera.
+        return Plan(missing_fields=missing, slots=slots)
+
+    calls = _calls_for(intent, fields, as_of)
+    return Plan(tool_calls=calls, slots=None if calls else slots)
+
+
+def _previous_fields(intent: AgentIntent, pending: dict[str, Any] | None) -> dict[str, Any]:
+    """Lo que ya se sabía, solo si venía de la MISMA intención.
+
+    Si la persona cambió de tema, los slots viejos no se arrastran: preguntar el precio de
+    una notebook y contestar sobre el alquiler no puede terminar simulando la notebook.
+    """
+    if not pending or pending.get("intent") != intent.value:
+        return {}
+    return dict(pending.get("fields") or {})
+
+
+def _purchase_fields(
+    intent: AgentIntent,
+    args: dict[str, Any],
+    previous: dict[str, Any],
+    last_simulation: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Monto, cuotas y producto de una compra, mezclando turno actual, slots y simulación.
+
+    La precedencia es siempre la misma: lo que se dijo AHORA gana sobre lo que se sabía de
+    antes, y lo de antes gana sobre la última simulación de la conversación.
+    """
+    fields = dict(previous)
+    fallback = last_simulation or {}
+    names = REQUIRED_SLOTS[intent] + _OPTIONAL_SLOTS.get(intent, ())
+    for name in names:
+        value = args.get(name)
+        if value in (None, ""):
+            value = fields.get(name)
+        if value in (None, ""):
+            value = fallback.get(name)
+        if value not in (None, ""):
+            fields[name] = value
+    return fields
+
+
+def _calls_for(intent: AgentIntent, fields: dict[str, Any], as_of: date) -> list[dict[str, Any]]:
+    """Las tools de una intención cuyos datos ya están completos."""
+    if intent is AgentIntent.CREATE_COMMITMENT:
+        return [{"name": "create_commitment_draft", "arguments": _commitment_arguments(fields)}]
+
+    if intent is AgentIntent.ONE_TIME_PURCHASE:
+        arguments: dict[str, Any] = {"amount": str(Decimal(str(fields["amount"])))}
+        if fields.get("category"):
+            arguments["category"] = fields["category"]
+        return [{"name": "check_one_time_purchase", "arguments": arguments}]
+
+    amount = Decimal(str(fields["amount"]))
+    installments = int(fields["installments"])
+    dates = [as_of]
+    if intent is AgentIntent.COMPARE_PURCHASE_DATES:
+        dates.append(add_months(as_of, 1, as_of.day))
+    return [
+        {
+            "name": "simulate_purchase_preview",
+            "arguments": {
+                "total_amount": str(amount),
+                "installments": installments,
+                "first_installment_date": first.isoformat(),
+            },
+        }
+        for first in dates
+    ]
+
 
 def plan_tools(
     intent: AgentIntent,
     message: str,
     args: dict[str, Any],
     as_of: date,
-    last_simulation: dict[str, Any] | None,
+    last_simulation: dict[str, Any] | None = None,
     pending_commitment_fields: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    """Tools de las intenciones que no necesitan completar datos.
+
+    Sigue existiendo con esta firma porque es la fachada que usan los evaluadores y los
+    tests de selección de tools. Las intenciones con slots pasan por `plan`.
+    """
     if args.get("_tool_calls"):
         return [
             {"name": call["name"], "arguments": call.get("arguments", {})}
             for call in args["_tool_calls"]
         ]
+
+    if intent in REQUIRED_SLOTS:
+        return plan(
+            intent, message, args, as_of, last_simulation, _as_pending(pending_commitment_fields)
+        ).tool_calls
+
+    if intent == AgentIntent.SPENDING_SUMMARY:
+        arguments = {
+            key: args[key]
+            for key in ("period", "category", "tx_type", "breakdown")
+            if args.get(key)
+        }
+        return [{"name": "get_spending_summary", "arguments": arguments}]
 
     if intent in (
         AgentIntent.DASHBOARD_SUMMARY,
@@ -102,89 +320,24 @@ def plan_tools(
     if intent == AgentIntent.SEARCH_HISTORY:
         return [{"name": "search_transactions", "arguments": {"query": message}}]
 
-    if intent == AgentIntent.ONE_TIME_PURCHASE:
-        # Compra al contado: comprobación simple contra el disponible. Jamás el simulador
-        # de cuotas (si no, la respuesta hablaría de "primera cuota" para un pago único).
-        amount = args.get("amount")
-        if amount is None:
-            return []
-        arguments: dict[str, Any] = {"amount": str(Decimal(str(amount)))}
-        if args.get("category"):
-            arguments["category"] = args["category"]
-        return [{"name": "check_one_time_purchase", "arguments": arguments}]
-
-    if intent == AgentIntent.SIMULATE_PURCHASE:
-        amount, installments = _sim_params(args, last_simulation)
-        if amount is None or installments is None:
-            return []
-        return [
-            {
-                "name": "simulate_purchase_preview",
-                "arguments": {
-                    "total_amount": str(amount),
-                    "installments": installments,
-                    "first_installment_date": as_of.isoformat(),
-                },
-            }
-        ]
-
-    if intent == AgentIntent.COMPARE_PURCHASE_DATES:
-        amount, installments = _sim_params(args, last_simulation)
-        if amount is None or installments is None:
-            return []
-        next_month = add_months(as_of, 1, as_of.day)
-        return [
-            {
-                "name": "simulate_purchase_preview",
-                "arguments": {
-                    "total_amount": str(amount),
-                    "installments": installments,
-                    "first_installment_date": as_of.isoformat(),
-                },
-            },
-            {
-                "name": "simulate_purchase_preview",
-                "arguments": {
-                    "total_amount": str(amount),
-                    "installments": installments,
-                    "first_installment_date": next_month.isoformat(),
-                },
-            },
-        ]
-
     if intent == AgentIntent.CREATE_TRANSACTION:
         return [{"name": "create_transaction_draft", "arguments": {"text": message}}]
-
-    if intent == AgentIntent.CREATE_COMMITMENT:
-        params = _commitment_params(message, args, as_of, pending_commitment_fields)
-        if params is None:
-            return []
-        return [{"name": "create_commitment_draft", "arguments": params}]
 
     return []
 
 
-def _sim_params(
-    args: dict[str, Any], last: dict[str, Any] | None
-) -> tuple[Decimal | None, int | None]:
-    amount = args.get("amount")
-    installments = args.get("installments")
-    if (amount is None or installments is None) and last:
-        amount = amount if amount is not None else last.get("amount")
-        installments = installments if installments is not None else last.get("installments")
-    amount = Decimal(str(amount)) if amount is not None else None
-    return amount, int(installments) if installments is not None else None
-
-
-def _commitment_params(
-    message: str,
-    args: dict[str, Any],
-    as_of: date,
-    pending: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    fields = extract_commitment_fields(message, args, as_of, pending)
-    if fields["missing_fields"]:
+def _as_pending(fields: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Envuelve unos campos de compromiso sueltos en la forma de `pending_request`."""
+    if not fields:
         return None
+    return {
+        "intent": AgentIntent.CREATE_COMMITMENT.value,
+        "fields": fields,
+        "missing_fields": list(fields.get("missing_fields") or []),
+    }
+
+
+def _commitment_arguments(fields: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": fields["name"],
         "amount": str(fields["amount"]),
@@ -192,19 +345,6 @@ def _commitment_params(
         "category": resolve_expense_category(fields.get("category"), fields["name"]),
         "is_recurring": bool(fields.get("is_recurring", False)),
     }
-
-
-def commitment_fields_after_turn(
-    message: str,
-    args: dict[str, Any],
-    as_of: date,
-    pending: dict[str, Any] | None,
-    *,
-    completed: bool,
-) -> dict[str, Any] | None:
-    if completed:
-        return None
-    return extract_commitment_fields(message, args, as_of, pending)
 
 
 def extract_commitment_fields(

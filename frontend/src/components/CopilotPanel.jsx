@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import Icon from './Icon'
 import AIUsageNotice from './AIUsageNotice'
@@ -38,6 +38,12 @@ export default function CopilotPanel({ onActionApplied }) {
   // Cuántas consultas inteligentes quedan hoy. Es una sola cuota compartida con el resto
   // de la IA; la informa el backend en cada respuesta y acá solo se muestra.
   const [usage, setUsage] = useState(() => getAIUsage())
+  // Candado sincrónico del envío. `thinking` no alcanza: es estado de React y se aplica
+  // recién en el próximo render, así que dos disparos en el mismo tick (Enter que envía el
+  // formulario y además dispara el click del botón, un doble toque en mobile, un click
+  // mientras el foco vuelve) leen `thinking === false` los dos y mandan la misma pregunta
+  // dos veces. Con un ref, el segundo ve el candado cerrado en el acto.
+  const sending = useRef(false)
   const chatLocked = Boolean(pending)
 
   function pushMessage(role, content) {
@@ -45,7 +51,8 @@ export default function CopilotPanel({ onActionApplied }) {
   }
 
   async function send(message) {
-    if (!message.trim() || thinking || chatLocked) return
+    if (!message.trim() || sending.current || thinking || chatLocked) return
+    sending.current = true
     setError(null)
     pushMessage('user', message)
     setInput('')
@@ -71,6 +78,7 @@ export default function CopilotPanel({ onActionApplied }) {
       // También después de un error: un 429 o un fallo del modelo cambian lo que queda.
       setUsage(getAIUsage())
       setThinking(false)
+      sending.current = false
     }
   }
 
@@ -92,7 +100,11 @@ export default function CopilotPanel({ onActionApplied }) {
   }
 
   async function resolvePending(approve) {
-    if (!pending || thinking) return
+    // Mismo candado que en el envío: aprobar dos veces por un doble click no puede
+    // convertirse en dos peticiones. La segunda recibiría 409 del backend, pero la persona
+    // vería un error donde en realidad todo salió bien.
+    if (!pending || sending.current || thinking) return
+    sending.current = true
     setThinking(true)
     setError(null)
     try {
@@ -105,6 +117,7 @@ export default function CopilotPanel({ onActionApplied }) {
       setError(err instanceof ApiError ? err.message : 'No se pudo completar la acción.')
     } finally {
       setThinking(false)
+      sending.current = false
     }
   }
 

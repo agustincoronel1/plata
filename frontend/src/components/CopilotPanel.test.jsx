@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -216,6 +216,63 @@ describe('CopilotPanel', () => {
     resolveChat(makeChatResponse())
     expect(await screen.findByText(/Podés gastar hasta/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/Escribile al copiloto/i)).toBeEnabled()
+  })
+
+  it('dos envíos en el mismo tick mandan una sola pregunta', async () => {
+    // El caso real que se vio en producción: la pregunta aparecía dos veces en el chat.
+    // `thinking` es estado de React y se aplica en el próximo render, así que dos eventos
+    // del mismo tick (Enter que envía el formulario y además dispara el click del botón, o
+    // un doble toque en mobile) pasaban los dos por el guard. Sin await entre medio, esto
+    // reproduce exactamente esa ventana.
+    api.chatCopilot.mockImplementation(() => new Promise(() => {}))
+    render(<CopilotPanel />)
+
+    const input = screen.getByLabelText(/Escribile al copiloto/i)
+    fireEvent.change(input, { target: { value: '¿Cuánto gasté este mes?' } })
+
+    // Los dos eventos se despachan dentro del MISMO act: React los procesa en el mismo
+    // lote y recién después vuelve a renderizar, que es justo la ventana del navegador
+    // real. Con un fireEvent por llamada no se reproduce, porque cada uno ya rerenderiza.
+    const form = input.closest('form')
+    const submit = () => new Event('submit', { bubbles: true, cancelable: true })
+    act(() => {
+      form.dispatchEvent(submit())
+      form.dispatchEvent(submit())
+    })
+
+    expect(api.chatCopilot).toHaveBeenCalledTimes(1)
+    // Y la pregunta figura una sola vez en la conversación.
+    expect(await screen.findAllByText('¿Cuánto gasté este mes?')).toHaveLength(1)
+  })
+
+  it('un doble click en aprobar no aplica la acción dos veces', async () => {
+    api.chatCopilot.mockResolvedValue(
+      makeChatResponse({
+        answer: 'Preparé un gasto de $25.000 en transporte.',
+        requires_approval: true,
+        pending_action: {
+          action_id: '3f5b2c4e-1111-4111-8111-111111111111',
+          kind: 'create_transaction',
+          summary: 'gasto de $25.000 en transporte',
+          draft: { category: 'transporte' },
+        },
+      }),
+    )
+    api.approveCopilotAction.mockImplementation(() => new Promise(() => {}))
+    const user = userEvent.setup()
+    render(<CopilotPanel />)
+
+    await user.type(screen.getByLabelText(/Escribile al copiloto/i), 'Gasté 25 lucas en nafta')
+    await user.click(screen.getByRole('button', { name: /Enviar/i }))
+
+    const approve = await screen.findByRole('button', { name: /Aprobar y registrar/i })
+    const click = () => new MouseEvent('click', { bubbles: true, cancelable: true })
+    act(() => {
+      approve.dispatchEvent(click())
+      approve.dispatchEvent(click())
+    })
+
+    expect(api.approveCopilotAction).toHaveBeenCalledTimes(1)
   })
 
   it('muestra el mensaje de timeout de la IA y no el de backend apagado', async () => {

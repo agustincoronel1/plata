@@ -37,9 +37,35 @@ _MONTHS_ES = (
     "diciembre",
 )
 
+# Mensaje de última instancia cuando NO hay datos para armar una respuesta determinística
+# (una cuenta sin perfil, una tool que falló). No se usa para una pregunta que simplemente
+# no necesitaba SQL: eso tiene su propia ruta y se contesta hablando.
 SAFE_FALLBACK = (
     "No pude resolver eso con datos confiables. Probá reformularlo o usá el formulario manual."
 )
+
+# Cuando el texto libre de un turno conversacional no pasa el control (por ejemplo porque
+# mencionó cifras sin ningún dato detrás), no se corta la conversación: se ofrece el camino
+# que sí puede dar números de verdad.
+CONVERSATION_RECOVERY = (
+    "Puedo explicarte esto, pero para hablar de montos necesito mirar tus datos. "
+    "¿Querés que te diga cuánto tenés disponible?"
+)
+
+# Fuera de alcance o intento de manipular al agente. Se dice en una línea, sin sermón y sin
+# mandar al formulario manual: el formulario no tiene nada que ver con lo que se pidió.
+UNSUPPORTED_MESSAGE = (
+    "Eso no lo puedo hacer. Puedo ayudarte con tus gastos, tus compromisos, tu disponible "
+    "y tus compras en cuotas."
+)
+
+# Cómo se nombra el período dentro de la frase del total.
+_PERIOD_PHRASE = {
+    "today": "hoy",
+    "week": "esta semana",
+    "month": "este mes",
+    "previous_month": "el mes pasado",
+}
 
 # Nombre humano de cada campo que puede faltar en un compromiso (nunca se muestra la clave).
 _FIELD_LABELS = {
@@ -147,6 +173,13 @@ _PUBLIC_TOOL_VIEWS: dict[str, tuple[tuple[str, str, str], ...]] = {
     "search_transactions": (
         ("count", "movimientos_encontrados", "raw"),
         ("total", "total", "money"),
+    ),
+    "get_spending_summary": (
+        ("total", "total", "money"),
+        ("count", "cantidad_de_movimientos", "raw"),
+        ("category", "categoria", "raw"),
+        ("date_from", "desde", "date"),
+        ("date_to", "hasta", "date"),
     ),
 }
 
@@ -463,6 +496,85 @@ def _build_search(context: dict[str, Any]) -> StructuredAnswer:
     )
 
 
+def _build_spending_summary(context: dict[str, Any]) -> StructuredAnswer:
+    """Total de un período: el número sale de SQL, la frase de acá."""
+    data = _first_result(context, "get_spending_summary")
+    if not data:
+        return _unavailable()
+    total = Decimal(str(data["total"]))
+    is_income = data.get("tx_type") == "income"
+    label = _PERIOD_PHRASE.get(data.get("period") or "", "en ese período")
+    where = f" en {data['category']}" if data.get("category") else ""
+    how = (
+        f"Sumé tus {'ingresos' if is_income else 'gastos'}{where} entre el "
+        f"{day_month(data['date_from'])} y el {day_month(data['date_to'])}."
+    )
+
+    if total <= 0:
+        verb = "ingresos" if is_income else "gastos"
+        return StructuredAnswer(
+            verdict="info",
+            headline=f"No registraste {verb}{where} {label}.",
+            how_i_solved_it=how,
+        )
+
+    count = int(data.get("count") or 0)
+    headline = (
+        f"{label.capitalize()} ingresaron {money(total)}."
+        if is_income
+        else f"Gastaste {money(total)}{where} {label}."
+    )
+
+    # Con desglose, lo que importa no es solo cuánto sino EN QUÉ: la categoría más grande
+    # va en la explicación y el resto queda listado abajo.
+    breakdown = data.get("by_category") or []
+    if breakdown:
+        primera = breakdown[0]
+        return StructuredAnswer(
+            verdict="info",
+            headline=headline,
+            explanation=(
+                f"Donde más gastaste fue en {primera['category']}: {money(primera['total'])}."
+                if not is_income
+                else f"Lo que más entró fue {primera['category']}: {money(primera['total'])}."
+            ),
+            details=[
+                AnswerDetail(label=str(item["category"]).capitalize(), value=money(item["total"]))
+                for item in breakdown
+            ],
+            how_i_solved_it=how + " Después los agrupé por categoría, de mayor a menor.",
+        )
+
+    return StructuredAnswer(
+        verdict="info",
+        headline=headline,
+        explanation=(
+            f"Son {count} {_plural(count, 'movimiento', 'movimientos')} en ese período."
+            if count
+            else ""
+        ),
+        how_i_solved_it=how,
+    )
+
+
+def _build_explain_last(context: dict[str, Any]) -> StructuredAnswer:
+    """ "¿Por qué?": se cuenta cómo se resolvió la respuesta anterior, sin rehacerla.
+
+    El texto sale de `how_i_solved_it`, que ya se armó con números verificados. No se
+    vuelven a pedir tools ni se recalcula nada: la pregunta es sobre lo que ya se dijo.
+    """
+    previous = context.get("last_structured_answer") or {}
+    how = previous.get("how_i_solved_it")
+    if not how:
+        return _unavailable()
+    return StructuredAnswer(
+        verdict="info",
+        headline=previous.get("headline") or "Te cuento cómo llegué a eso.",
+        explanation=how,
+        recommendation=previous.get("recommendation"),
+    )
+
+
 def _build_write(context: dict[str, Any]) -> StructuredAnswer:
     pending = context.get("pending_action")
     if pending:
@@ -472,18 +584,75 @@ def _build_write(context: dict[str, Any]) -> StructuredAnswer:
             explanation="Todavía no lo registré: revisalo y aprobalo para que lo guarde.",
             how_i_solved_it="Armé un borrador con lo que me dijiste. Nada se guarda sin tu OK.",
         )
-    partial = context.get("pending_commitment_fields") or {}
-    missing = partial.get("missing_fields") or context.get("planner_args", {}).get(
-        "missing_fields", []
-    )
+    missing = _missing_from(context)
     if missing:
+        return build_clarification(AgentIntent.CREATE_COMMITMENT, missing, _slots_from(context))
+
+    # El borrador se armó pero no quedó confirmable: al modelo le faltó entender algo del
+    # movimiento. Es una repregunta, no un fallo: se pide lo que falta y la conversación
+    # sigue, en vez de mandar a la persona al formulario manual.
+    draft = _first_result(context, "create_transaction_draft")
+    if draft is not None and not draft.get("is_confirmable"):
+        pending_fields = [f for f in draft.get("missing_fields") or [] if f in _FIELD_LABELS]
+        if pending_fields:
+            return build_clarification(AgentIntent.CREATE_TRANSACTION, pending_fields)
+        return StructuredAnswer(
+            verdict="needs_input",
+            headline="No terminé de entender ese movimiento.",
+            explanation="¿Me decís cuánto fue y en qué lo gastaste?",
+        )
+    return _unavailable()
+
+
+def _missing_from(context: dict[str, Any]) -> list[str]:
+    partial = context.get("pending_request") or {}
+    return list(
+        partial.get("missing_fields")
+        or context.get("missing_fields")
+        or context.get("planner_args", {}).get("missing_fields", [])
+    )
+
+
+def _slots_from(context: dict[str, Any]) -> dict[str, Any]:
+    return dict((context.get("pending_request") or {}).get("fields") or {})
+
+
+def build_clarification(
+    intent: AgentIntent, missing: list[str], fields: dict[str, Any] | None = None
+) -> StructuredAnswer:
+    """La repregunta cuando falta un dato. Es una respuesta, no un error.
+
+    Se dice en una sola pregunta y en criollo ("¿cuánto sale la notebook?"), nunca con el
+    nombre del campo. Lo que ya se sabe no se vuelve a pedir: vive en los slots y se usa
+    para que la pregunta suene a conversación y no a formulario.
+    """
+    fields = fields or {}
+    if intent in (AgentIntent.CREATE_COMMITMENT, AgentIntent.CREATE_TRANSACTION):
         labels = [_FIELD_LABELS.get(field, field) for field in missing]
         return StructuredAnswer(
             verdict="needs_input",
             headline=f"Me falta {_join_es(labels)} del pago.",
             explanation="Pasámelo y lo dejo listo para que lo apruebes.",
         )
-    return _unavailable()
+
+    item = fields.get("item")
+    thing = f"la {item}" if item else "eso"
+    if "amount" in missing and "installments" in missing:
+        question = f"¿Cuánto sale {thing} y en cuántas cuotas lo pagarías?"
+    elif "amount" in missing:
+        question = f"¿Cuánto sale {thing}?"
+    elif "installments" in missing:
+        question = "¿En cuántas cuotas lo pagarías?"
+    else:
+        labels = [_FIELD_LABELS.get(field, field) for field in missing]
+        question = f"¿Me pasás {_join_es(labels)}?"
+
+    return StructuredAnswer(
+        verdict="needs_input",
+        headline="Sí, eso lo puedo calcular.",
+        explanation=question,
+        how_i_solved_it=None,
+    )
 
 
 def _join_es(items: list[str]) -> str:
@@ -493,6 +662,8 @@ def _join_es(items: list[str]) -> str:
 
 
 _BUILDERS = {
+    AgentIntent.SPENDING_SUMMARY: _build_spending_summary,
+    AgentIntent.EXPLAIN_LAST_ANSWER: _build_explain_last,
     AgentIntent.DASHBOARD_SUMMARY: _build_spendable,
     AgentIntent.EXPLAIN_AVAILABLE_MONEY: _build_explain,
     AgentIntent.DAILY_BUDGET: _build_daily_budget,
@@ -553,8 +724,14 @@ _JARGON = (
 _RAW_MONEY = re.compile(r"\$\s?\d+(?:,\d{3})*\.\d{2}\b")
 
 
-def internal_leaks(text: str) -> list[str]:
-    """Motivos por los que un texto NO es mostrable. Vacío = apto."""
+def internal_leaks(text: str, *, conversational: bool = False) -> list[str]:
+    """Motivos por los que un texto NO es mostrable. Vacío = apto.
+
+    `conversational=True` afloja UNA regla: la de "más de una pregunta". Existía para que
+    el copiloto no cerrara una respuesta de datos con un menú de opciones, pero en una
+    charla repreguntar es lo correcto ("¿cuánto sale? ¿la pagarías en cuotas?"). Todo lo
+    demás —campos internos, jerga, montos crudos, largo— vale igual en las dos rutas.
+    """
     lowered = text.lower()
     reasons = [f"campo interno expuesto: {m}" for m in dict.fromkeys(_SNAKE_CASE.findall(lowered))]
     reasons += [f"jerga técnica: {word}" for word in _JARGON if word in lowered]
@@ -563,10 +740,10 @@ def internal_leaks(text: str) -> list[str]:
         reasons.append("respuesta demasiado larga")
     if len([line for line in text.splitlines() if line.strip()]) > MAX_ANSWER_LINES:
         reasons.append("respuesta con demasiadas líneas")
-    if text.count("?") > 1:
+    if text.count("?") > (2 if conversational else 1):
         reasons.append("más de una pregunta al final")
     return reasons
 
 
-def is_presentable(text: str) -> bool:
-    return bool(text.strip()) and not internal_leaks(text)
+def is_presentable(text: str, *, conversational: bool = False) -> bool:
+    return bool(text.strip()) and not internal_leaks(text, conversational=conversational)

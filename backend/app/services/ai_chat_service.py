@@ -17,6 +17,7 @@ prompt: el modelo no lo ve ni puede cambiarlo.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Callable
 from datetime import date
@@ -29,6 +30,7 @@ from app.ai.agent.graph import RECURSION_LIMIT, get_compiled_graph
 from app.ai.agent.schemas import (
     AgentEvidence,
     AgentIntent,
+    AgentRoute,
     ChatResponse,
     ConversationMessage,
     ConversationResponse,
@@ -38,7 +40,7 @@ from app.ai.agent.schemas import (
 )
 from app.ai.agent.tools import ToolContext
 from app.ai.exceptions import AIError, DraftNotFoundError
-from app.ai.fast_path import match_fast_path
+from app.ai.fast_path import FastPathIntent, FastPathMatch, match_fast_path
 from app.ai.gateway import get_ai_gateway
 from app.ai.trace import log_fast_path_hit, log_fast_path_miss
 from app.core.config import settings
@@ -47,6 +49,8 @@ from app.schemas.ai_transaction import TransactionConfirmRequest
 from app.schemas.commitment import CommitmentCreate
 from app.services import ai_transaction_service, commitment_service, fast_path_service
 from app.services.draft_store import DraftStatus, DraftStore, get_draft_store
+
+logger = logging.getLogger(__name__)
 
 
 class PendingActionNotFoundError(AIError):
@@ -143,10 +147,10 @@ def chat(
     # y esta es la última línea antes de que el turno empiece a costar plata. Si resuelve,
     # se sale sin invocar `before_provider`, así que no se reserva cuota, y sin llamar a
     # `graph.invoke`, así que no corre el grafo, ni las tools, ni el RAG, ni el modelo.
-    fast_answer = _try_fast_path(
-        session, message, conversation_id, snapshot, user_id=user_id, as_of=as_of
-    )
-    if fast_answer is not None:
+    fast = _try_fast_path(session, message, conversation_id, snapshot, user_id=user_id, as_of=as_of)
+    if fast is not None:
+        fast_answer, match = fast
+        _record_turn(graph, config, message, fast_answer, match)
         return fast_answer
 
     # Desde acá sí o sí se llama al modelo: es el punto exacto donde corresponde cobrar.
@@ -215,7 +219,7 @@ def _try_fast_path(
     *,
     user_id: uuid.UUID,
     as_of: date | None,
-) -> ChatResponse | None:
+) -> tuple[ChatResponse, FastPathMatch] | None:
     """Resuelve el turno sin IA si la consulta es simple. `None` = seguí con el agente.
 
     Tres puertas, y basta con que una se cierre para que el mensaje siga de largo: que el
@@ -240,18 +244,82 @@ def _try_fast_path(
     log_fast_path_hit(
         intent=match.intent.value, period=match.period.value if match.period else None
     )
-    return answer
+    return answer, match
+
+
+def _record_turn(
+    graph: Any,
+    config: dict[str, Any],
+    message: str,
+    answer: ChatResponse,
+    match: FastPathMatch,
+) -> None:
+    """Deja el turno del atajo en el estado de la conversación, sin correr el grafo.
+
+    El fast path contesta sin pasar por LangGraph, así que su turno no quedaba registrado en
+    ningún lado: la conversación tenía agujeros. Con el historial incompleto, un seguimiento
+    ("¿y el mes pasado?") llegaba sin la pregunta que lo originó y no había forma de
+    entenderlo. `update_state` escribe un checkpoint y nada más: no ejecuta nodos, no llama
+    al modelo y no toca las tools.
+
+    Si el checkpointer falla, el turno igual se responde: perder la memoria de una consulta
+    de lectura es molesto, no romper la respuesta que la persona ya tiene.
+    """
+    values = {
+        "messages": [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": answer.answer},
+        ],
+        "intent": answer.intent.value,
+        "route": answer.route.value,
+        "last_query": {"intent": answer.intent.value, "args": _query_args(match)},
+        "last_structured_answer": (
+            answer.structured_answer.model_dump(mode="json") if answer.structured_answer else None
+        ),
+        "last_answer_amounts": _amounts_in_answer(answer),
+    }
+    try:
+        graph.update_state(config, values)
+    except Exception:  # noqa: BLE001 - la respuesta ya está lista; el registro es best effort
+        logger.warning("no se pudo registrar el turno del fast path en el checkpoint")
+
+
+def _query_args(match: FastPathMatch) -> dict[str, Any]:
+    """Con qué se resolvió la consulta, en el formato que entiende el planificador.
+
+    `tx_type` viaja aunque el atajo no lo tenga como campo: la distinción ingreso/gasto está
+    en la intención. Sin él, "¿cuánto cobré este mes?" seguido de "¿y el mes pasado?" perdía
+    que se estaba hablando de ingresos y el seguimiento contestaba gastos.
+    """
+    args: dict[str, Any] = {}
+    if match.period is not None:
+        args["period"] = match.period.value
+    if match.category is not None:
+        args["category"] = match.category
+    if match.intent is FastPathIntent.INCOME_TOTAL:
+        args["tx_type"] = "income"
+    elif match.intent in (FastPathIntent.EXPENSE_TOTAL, FastPathIntent.EXPENSE_BY_CATEGORY):
+        args["tx_type"] = "expense"
+    return args
+
+
+def _amounts_in_answer(answer: ChatResponse) -> list[int]:
+    """Los montos que el atajo acaba de mostrar, para que un "¿por qué?" pueda repetirlos."""
+    from app.ai.agent.verifier import amounts_in
+
+    return amounts_in(answer.answer)
 
 
 def _in_multi_turn_write(snapshot: Any) -> bool:
-    """True si la conversación está completando un compromiso a lo largo de varios turnos.
+    """True si la conversación tiene algo a medias esperando un dato.
 
-    Con un alta a medias, el grafo interpreta el mensaje siguiente como la respuesta al
-    dato que falta ("son 350 mil"). Contestar ahí una consulta de saldo sería cambiar el
-    comportamiento actual del copiloto, así que el atajo se aparta y deja seguir al agente.
+    Con una intención incompleta, el mensaje siguiente suele ser el dato que falta ("son
+    350 mil", "1.200.000"). El atajo se aparta y deja que el agente lo interprete en su
+    contexto, en vez de leerlo como una consulta nueva.
     """
     values = snapshot.values if snapshot else {}
-    return bool(values.get("pending_commitment_fields"))
+    pending = values.get("pending_request") or {}
+    return bool(pending.get("missing_fields"))
 
 
 def _active_pending_action(snapshot: Any) -> dict[str, Any] | None:
@@ -334,7 +402,7 @@ def _confirm_commitment(ctx: ToolContext, draft_id: uuid.UUID) -> str:
     # de que la persona detecte al toque que la fecha o la categoría salieron mal.
     confirmacion = (
         f"Agendé {commitment.name} de {_fmt_money(commitment.amount)} "
-        f"en {commitment.category}, para el {commitment.due_date.isoformat()}"
+        f"en {commitment.category}, para el {commitment.due_date.strftime('%d/%m/%Y')}"
     )
     if commitment.is_recurring:
         confirmacion += ", todos los meses"
@@ -362,6 +430,7 @@ def _trace(conversation_id: uuid.UUID, trace_id: str, state: dict[str, Any], mes
         trace_id=trace_id,
         conversation_id=str(conversation_id),
         intent=state.get("intent", "unknown"),
+        route=state.get("route", ""),
         tools_used=[r["name"] for r in results],
         tool_durations_ms=[r.get("duration_ms", 0) for r in results],
         evidence_count=len(state.get("retrieved_evidence", [])),
@@ -401,6 +470,7 @@ def _response(conversation_id: uuid.UUID, trace_id: str, state: dict[str, Any]) 
             StructuredAnswer.model_validate(structured_raw) if structured_raw else None
         ),
         intent=intent,
+        route=AgentRoute(state.get("route") or AgentRoute.DETERMINISTIC.value),
         tools_used=tools,
         evidence=evidence,
         assumptions=state.get("assumptions", []),

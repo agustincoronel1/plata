@@ -191,6 +191,33 @@ def test_instrumentacion_cuenta_llamadas_y_no_guarda_contenido(
     assert not hasattr(record, "prompt")
 
 
+def test_el_hilo_del_smoke_se_arma_igual_que_en_produccion() -> None:
+    """Con el `conversation_id` pelado, el smoke leía un hilo vacío y limpiaba nada.
+
+    `ai_chat_service` le antepone el dueño al hilo del checkpointer. Comprobar el estado con
+    el id a secas devuelve un snapshot vacío —así que el verificador "pasaba" por no haber
+    nada que mirar— y el `delete ... where thread_id = ...` del cleanup no borraba una fila.
+    """
+    from app.services.ai_chat_service import _thread_id
+
+    conversation_id = uuid.uuid4()
+
+    hilo = smoke._thread(conversation_id)
+
+    assert hilo == _thread_id(smoke.DEMO_USER_ID, conversation_id)
+    assert hilo != str(conversation_id)
+
+
+def test_ningun_lugar_del_smoke_usa_el_conversation_id_como_hilo() -> None:
+    """Los cuatro usos eran el mismo error copiado; que no vuelva por una quinta vía."""
+    from pathlib import Path
+
+    fuente = Path(smoke.__file__).read_text(encoding="utf-8")
+
+    assert 'thread_id": str(' not in fuente
+    assert "thread_id = any" in fuente, "el cleanup de checkpoints sigue existiendo"
+
+
 def test_solo_el_rag_puede_quedar_skipped_sin_fallar() -> None:
     budget = smoke.CallBudget(12)
     run = smoke.Run(budget=budget, session=None, as_of=date(2026, 7, 26))
@@ -351,14 +378,20 @@ def test_cleanup_borra_movimientos_documentos_y_restaura_saldo(
 
 @requires_postgres
 def test_cleanup_borra_los_checkpoints_de_la_corrida(db_session: Session) -> None:
+    """Los hilos se insertan como los escribe producción: `<user_id>:<conversation_id>`.
+
+    Antes este test los insertaba con el `conversation_id` pelado, que es justamente lo que
+    el cleanup buscaba mal: los dos lados compartían el error y por eso pasaba en verde
+    mientras en una corrida real no se borraba ningún checkpoint.
+    """
     mine, ajena = uuid.uuid4(), uuid.uuid4()
-    for thread in (mine, ajena):
+    for conversation_id in (mine, ajena):
         db_session.execute(
             text(
                 "insert into checkpoints (thread_id, checkpoint_ns, checkpoint_id, checkpoint) "
                 "values (:t, '', :c, '{}'::jsonb)"
             ),
-            {"t": str(thread), "c": str(uuid.uuid4())},
+            {"t": smoke._thread(conversation_id), "c": str(uuid.uuid4())},
         )
     db_session.flush()
 
@@ -369,12 +402,12 @@ def test_cleanup_borra_los_checkpoints_de_la_corrida(db_session: Session) -> Non
     remaining = (
         db_session.execute(
             text("select thread_id from checkpoints where thread_id = any(:t)"),
-            {"t": [str(mine), str(ajena)]},
+            {"t": [smoke._thread(mine), smoke._thread(ajena)]},
         )
         .scalars()
         .all()
     )
-    assert remaining == [str(ajena)]  # la conversación previa no se toca
+    assert remaining == [smoke._thread(ajena)]  # la conversación previa no se toca
 
 
 @requires_postgres

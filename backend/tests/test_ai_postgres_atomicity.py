@@ -131,7 +131,7 @@ class PlannedBrain:
             },
         ]
 
-    def classify(self, message: str, history: list[dict]) -> dict:
+    def classify(self, message: str, history: list[dict], context: dict | None = None) -> dict:
         return {
             "intent": AgentIntent.CREATE_TRANSACTION,
             "confidence": 0.9,

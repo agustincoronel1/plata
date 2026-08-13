@@ -7,7 +7,9 @@ Dos reglas que ordenan el módulo:
 
 1. **No se inventan fórmulas.** El disponible sale de `financial_engine.build_summary`, la
    misma función que alimenta el dashboard; el saldo sale del perfil, que es la fuente
-   autoritativa. Acá no se recalcula nada que ya tenga dueño.
+   autoritativa. Los totales por período los suma `spending_service`, que es la misma casa
+   que usa la tool del agente: la plata que se informa acá y la que informa el copiloto
+   completo salen de la misma consulta. Acá no se recalcula nada que ya tenga dueño.
 2. **Ante un dato que falta, se devuelve `None`.** Eso hace que quien llama siga por el
    camino normal (el agente), en lugar de responder algo distinto de lo que respondería
    hoy. Es la misma política de "ante la duda, LangGraph" del clasificador.
@@ -22,11 +24,9 @@ El texto se arma con plantillas y el formato monetario es-AR que ya usa el copil
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
-from decimal import Decimal
-from typing import Any
+from datetime import date
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.agent.presentation import day_month, money
@@ -35,10 +35,11 @@ from app.ai.fast_path import FastPathIntent, FastPathMatch, Period
 from app.core.timezone import app_today
 from app.models import Commitment, CommitmentStatus, Transaction, TransactionType
 from app.services.commitment_service import list_commitments
-from app.services.dashboard_service import month_bounds, to_commitment_inputs, to_profile_input
+from app.services.dashboard_service import to_commitment_inputs, to_profile_input
 from app.services.exceptions import NotFoundError
 from app.services.financial_engine import ZERO, build_summary
 from app.services.profile_service import get_profile
+from app.services.spending_service import PERIOD_LABEL, period_bounds, sum_amount
 
 # Cuántos elementos se muestran en las respuestas de lista. Corto a propósito: es un chat,
 # no un listado; el detalle completo vive en las pantallas de movimientos y compromisos.
@@ -50,68 +51,20 @@ MAX_ITEMS = 5
 # contrato del agente. Reusando, el cuerpo de la respuesta queda idéntico al de siempre y
 # el frontend no se entera; para distinguirlas está el campo `source`.
 _AGENT_INTENT: dict[FastPathIntent, AgentIntent] = {
-    FastPathIntent.EXPENSE_TOTAL: AgentIntent.SEARCH_HISTORY,
-    FastPathIntent.EXPENSE_BY_CATEGORY: AgentIntent.SEARCH_HISTORY,
-    FastPathIntent.INCOME_TOTAL: AgentIntent.SEARCH_HISTORY,
+    # Los totales por período y categoría son `spending_summary`, la misma intención que
+    # usa el agente para la tool determinística equivalente. Que las dos vías declaren lo
+    # mismo es lo que permite que un seguimiento ("¿y el mes pasado?") entienda de qué se
+    # venía hablando, sin importar quién contestó el turno anterior.
+    FastPathIntent.EXPENSE_TOTAL: AgentIntent.SPENDING_SUMMARY,
+    FastPathIntent.EXPENSE_BY_CATEGORY: AgentIntent.SPENDING_SUMMARY,
+    FastPathIntent.INCOME_TOTAL: AgentIntent.SPENDING_SUMMARY,
     FastPathIntent.RECENT_TRANSACTIONS: AgentIntent.SEARCH_HISTORY,
     FastPathIntent.CURRENT_BALANCE: AgentIntent.DASHBOARD_SUMMARY,
     FastPathIntent.AVAILABLE_AMOUNT: AgentIntent.DASHBOARD_SUMMARY,
     FastPathIntent.PENDING_COMMITMENTS: AgentIntent.LIST_COMMITMENTS,
 }
 
-# Cómo se nombra cada período dentro de la frase.
-_PERIOD_LABEL: dict[Period, str] = {
-    Period.TODAY: "hoy",
-    Period.WEEK: "esta semana",
-    Period.MONTH: "este mes",
-}
-
-
-# ---------- Rango de fechas ----------
-
-
-def period_bounds(period: Period, today: date) -> tuple[date, date]:
-    """Primer y último día del período, en la zona de negocio de Vector.
-
-    `today` lo provee quien llama con `app_today()`, así un gasto de las 22:00 de Argentina
-    cuenta en su día y no en el siguiente (el servidor corre en UTC).
-
-    La semana es de lunes a domingo, y el mes es el mes calendario que ya usa el dashboard
-    (`month_bounds`), para que el total del chat y el de la pantalla coincidan.
-    """
-    if period is Period.TODAY:
-        return today, today
-    if period is Period.WEEK:
-        monday = today - timedelta(days=today.weekday())
-        return monday, monday + timedelta(days=6)
-    return month_bounds(today)
-
-
 # ---------- Consultas ----------
-
-
-def _sum_amount(
-    session: Session,
-    user_id: uuid.UUID,
-    tx_type: TransactionType,
-    start: date,
-    end: date,
-    category: str | None = None,
-) -> Decimal:
-    """Total de movimientos del usuario en el rango. Una consulta, agregada por PostgreSQL.
-
-    Incluye los gastos autogenerados al pagar un compromiso: son `Transaction` de tipo
-    expense como cualquier otra, y para la persona ese pago es plata que salió.
-    """
-    statement: Select[tuple[Any]] = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-        Transaction.user_id == user_id,
-        Transaction.type == tx_type,
-        Transaction.occurred_on >= start,
-        Transaction.occurred_on <= end,
-    )
-    if category is not None:
-        statement = statement.where(Transaction.category == category)
-    return Decimal(session.execute(statement).scalar_one()).quantize(ZERO)
 
 
 def _recent(session: Session, user_id: uuid.UUID, *, expenses_only: bool) -> list[Transaction]:
@@ -192,11 +145,11 @@ def _resolve_total(
 ) -> tuple[str, StructuredAnswer]:
     period = match.period or Period.MONTH
     start, end = period_bounds(period, today)
-    label = _PERIOD_LABEL[period]
+    label = PERIOD_LABEL[period]
     is_income = match.intent is FastPathIntent.INCOME_TOTAL
     tx_type = TransactionType.INCOME if is_income else TransactionType.EXPENSE
 
-    total = _sum_amount(session, user_id, tx_type, start, end, match.category)
+    total = sum_amount(session, user_id, tx_type, start, end, match.category)
     how = (
         f"Sumé tus {'ingresos' if is_income else 'gastos'}"
         + (f" de {match.category}" if match.category else "")

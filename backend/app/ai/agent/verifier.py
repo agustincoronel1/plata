@@ -1,14 +1,25 @@
 """Verificador determinístico: la respuesta no puede afirmar números sin respaldo.
 
-Reglas (antes de mostrar la respuesta como válida):
-- Todo monto mencionado en la respuesta debe existir en los tool results o la evidencia.
-- La respuesta no puede exponer campos internos, jerga técnica, montos sin formato es-AR
-  ni pasarse de largo (esto lo evalúa `presentation.internal_leaks`).
-- Una escritura pendiente exige que approval_required sea verdadero.
-- No se ejecutan escrituras sin aprobación (garantizado por construcción del grafo).
+La regla de fondo no cambió: **un monto que la persona lee tiene que venir de sus datos.**
+Lo que cambió es a qué se le exige qué, porque no todos los turnos son iguales:
 
-Si falla, la respuesta se reemplaza por un mensaje seguro y se registra el motivo. El modelo
-verificador (segunda capa) es opcional; estas reglas mandan.
+- Un turno con datos (`deterministic`, `simulation`, `mixed`, `action`) afirma cifras de la
+  persona: cada monto del texto tiene que estar en los tool results o en la evidencia.
+- Un turno conversacional no mira ningún dato, así que no puede haber NINGÚN monto: sin
+  algo detrás, "$850.000" se lee como el saldo de quien pregunta. Es la misma regla llevada
+  al extremo correcto, no una excepción.
+- Los montos de la ÚLTIMA respuesta siguen valiendo un turno más. Sin esto, "¿por qué me
+  dijiste que no me convenía?" quedaba bloqueado por repetir un número que el propio
+  copiloto calculó y verificó un minuto antes. Es una ventana de un turno a propósito: una
+  allowlist con todo lo dicho en la conversación terminaría avalando una afirmación nueva
+  con un número viejo que no tiene nada que ver.
+
+Además, ninguna respuesta puede exponer campos internos ni jerga (`presentation`), y una
+escritura pendiente exige la marca de aprobación.
+
+Si algo falla, quien llama decide cómo recuperarse (plantilla determinística o mensaje
+conversacional); acá solo se dice qué está mal. El modelo verificador (segunda capa) es
+opcional; estas reglas mandan.
 """
 
 from __future__ import annotations
@@ -18,6 +29,7 @@ from decimal import Decimal
 from typing import Any
 
 from app.ai.agent.presentation import internal_leaks
+from app.ai.agent.schemas import GROUNDED_ROUTES, AgentRoute
 
 _MONEY_IN_TEXT = re.compile(r"\$\s?(\d[\d.,]*)")
 
@@ -53,15 +65,28 @@ def _collect_numbers(value: Any, acc: set[int]) -> None:
             _collect_numbers(item, acc)
 
 
-def known_amounts(tool_results: list[dict[str, Any]], evidence: list[dict[str, Any]]) -> set[int]:
+def known_amounts(
+    tool_results: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
+    previously_verified: list[int] | None = None,
+) -> set[int]:
     acc: set[int] = set()
     for result in tool_results:
         _collect_numbers(result.get("data"), acc)
     for ev in evidence:
         _collect_numbers(ev.get("amount"), acc)
+    # Los montos de la última respuesta mostrada (y solo esos): salieron de una tool y se
+    # verificaron en ese turno, así que un seguimiento puede repetirlos.
+    acc |= {int(value) for value in previously_verified or []}
     # Un margen negativo se cuenta en positivo ("quedarías $3.000 por debajo"): el valor
     # absoluto de un número respaldado sigue estando respaldado.
     return acc | {abs(value) for value in acc}
+
+
+def amounts_in(answer: str) -> list[int]:
+    """Los montos que el texto le muestra a la persona, en pesos enteros."""
+    found = [_to_int_pesos(match) for match in _MONEY_IN_TEXT.findall(answer)]
+    return [value for value in found if value is not None]
 
 
 def verify(
@@ -71,16 +96,18 @@ def verify(
     evidence: list[dict[str, Any]],
     pending_action: dict[str, Any] | None,
     approval_required: bool,
+    route: AgentRoute = AgentRoute.DETERMINISTIC,
+    previously_verified: list[int] | None = None,
 ) -> tuple[bool, list[str]]:
     reasons: list[str] = []
+    conversational = route not in GROUNDED_ROUTES
 
-    known = known_amounts(tool_results, evidence)
-    for match in _MONEY_IN_TEXT.findall(answer):
-        pesos = _to_int_pesos(match)
-        if pesos is not None and pesos not in known:
-            reasons.append(f"monto sin respaldo: ${match}")
+    known = known_amounts(tool_results, evidence, previously_verified)
+    for pesos in amounts_in(answer):
+        if pesos not in known:
+            reasons.append(f"monto sin respaldo: ${pesos}")
 
-    reasons.extend(internal_leaks(answer))
+    reasons.extend(internal_leaks(answer, conversational=conversational))
 
     if pending_action and not approval_required:
         reasons.append("escritura pendiente sin marca de aprobación")

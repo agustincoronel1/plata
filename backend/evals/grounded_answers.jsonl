@@ -4,3 +4,7 @@
 {"message": "¿Puedo comprar algo de 900 mil en 9 cuotas?", "expects_evidence": false, "must_be_grounded": true}
 {"message": "¿Cuánto puedo gastar por día hasta cobrar?", "expects_evidence": false, "must_be_grounded": true}
 {"message": "¿Puedo gastar 8.000 en ropa hoy?", "expects_evidence": false, "must_be_grounded": true}
+{"message": "¿Qué es un fondo de emergencia?", "expects_evidence": false, "must_be_grounded": true, "expects_tools": false}
+{"message": "¿Qué diferencia hay entre gasto fijo y variable?", "expects_evidence": false, "must_be_grounded": true, "expects_tools": false}
+{"message": "¿Cómo puedo organizar mejor mis gastos?", "expects_evidence": false, "must_be_grounded": true, "expects_tools": false}
+{"message": "¿Puedo comprar una notebook en 9 cuotas?", "expects_evidence": false, "must_be_grounded": true, "expects_tools": false}

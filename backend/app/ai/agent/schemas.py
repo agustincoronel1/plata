@@ -19,6 +19,10 @@ class AgentIntent(StrEnum):
     DAILY_BUDGET = "daily_budget"
     LIST_COMMITMENTS = "list_commitments"
     SEARCH_HISTORY = "search_history"
+    SPENDING_SUMMARY = "spending_summary"
+    # "¿Por qué me dijiste eso?": se explica la respuesta anterior con lo que ya se calculó,
+    # sin volver a ejecutar la intención entera ni pedir tools de nuevo.
+    EXPLAIN_LAST_ANSWER = "explain_last_answer"
     # Compra al contado (pago único hoy) vs. compra financiada en cuotas: son caminos
     # distintos a propósito. Una consulta al contado nunca debe pasar por el simulador.
     ONE_TIME_PURCHASE = "one_time_purchase"
@@ -26,7 +30,48 @@ class AgentIntent(StrEnum):
     COMPARE_PURCHASE_DATES = "compare_purchase_dates"
     CREATE_TRANSACTION = "create_transaction"
     CREATE_COMMITMENT = "create_commitment"
+    # Charla dentro del dominio financiero que NO depende de los datos de la persona:
+    # qué es un fondo de emergencia, si conviene pagar en cuotas sin interés, cómo
+    # ordenarse. Es una capacidad válida del copiloto, no un cajón de descarte: para eso
+    # está UNKNOWN, que sigue significando "esto no lo puedo atender".
+    CONVERSATIONAL = "conversational"
     UNKNOWN = "unknown"
+
+
+class AgentRoute(StrEnum):
+    """Cómo se resuelve un turno. Es la pieza que faltaba en el contrato.
+
+    Antes había una sola cadena (clasificar → tools → plantilla → verificar) y todo lo que
+    no encajaba terminaba en un mensaje de error. La ruta dice explícitamente qué clase de
+    turno es, y con eso cada capa sabe qué exigirle:
+
+    - `DETERMINISTIC`: la respuesta ES un dato de la persona. Números de SQL, plantilla.
+    - `SIMULATION`: el motor determinístico proyecta un escenario.
+    - `ACTION`: escritura; pasa por borrador y aprobación humana.
+    - `CLARIFICATION`: falta un dato para poder resolver. NO es un error: es una pregunta.
+    - `CONVERSATIONAL`: se contesta hablando, sin tocar la base.
+    - `MIXED`: se traen datos reales y después se razona sobre ellos en lenguaje natural.
+    - `UNSUPPORTED`: fuera de alcance o intento de manipular al agente.
+    - `ERROR`: falla real (proveedor caído, salida corrupta, tool rota, estado imposible).
+    """
+
+    DETERMINISTIC = "deterministic"
+    SIMULATION = "simulation"
+    ACTION = "action"
+    CLARIFICATION = "clarification"
+    CONVERSATIONAL = "conversational"
+    MIXED = "mixed"
+    UNSUPPORTED = "unsupported"
+    ERROR = "error"
+
+
+# Rutas cuyo texto se arma con datos del usuario y por lo tanto exige respaldo en tools.
+GROUNDED_ROUTES = frozenset(
+    {AgentRoute.DETERMINISTIC, AgentRoute.SIMULATION, AgentRoute.MIXED, AgentRoute.ACTION}
+)
+
+# Rutas donde el texto lo escribe el modelo y no hay plantilla que lo reemplace.
+FREE_TEXT_ROUTES = frozenset({AgentRoute.CONVERSATIONAL, AgentRoute.CLARIFICATION})
 
 
 RetrievalMethod = Literal["sql", "full_text", "vector", "hybrid"]
@@ -67,6 +112,10 @@ class PendingAction(BaseModel):
 # Qué decide la respuesta, en términos del usuario (nunca "is_viable" ni "conclusion").
 AnswerVerdict = Literal["yes", "no", "info", "needs_input", "unavailable"]
 
+# Datos que el copiloto puede llegar a pedir. Es una lista cerrada porque el modelo la
+# elige dentro de un structured output: un campo inventado sí es una salida inválida.
+MissingField = Literal["amount", "installments", "name", "due_date", "category"]
+
 
 class AnswerDetail(BaseModel):
     """Una línea de detalle ya formateada para mostrar (p. ej. un pago pendiente)."""
@@ -105,6 +154,9 @@ class ChatResponse(BaseModel):
     answer: str
     structured_answer: StructuredAnswer | None = None
     intent: AgentIntent
+    # Cómo se resolvió el turno. Es información de diagnóstico (la interfaz no la muestra) y
+    # tiene default, así que ninguna respuesta que ya existía cambia de forma.
+    route: AgentRoute = AgentRoute.DETERMINISTIC
     tools_used: list[ToolCallTrace]
     evidence: list[AgentEvidence]
     assumptions: list[str]

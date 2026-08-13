@@ -282,7 +282,9 @@ def test_la_confirmacion_repite_los_datos_guardados(
     ).json()
 
     assert "netflix" in approved["answer"].lower()
-    assert "2026-09-20" in approved["answer"]
+    # La fecha se repite como la lee una persona, no en ISO: es el formato del producto.
+    assert "20/09/2026" in approved["answer"]
+    assert "2026-09-20" not in approved["answer"]
     assert "suscripciones" in approved["answer"]
 
 

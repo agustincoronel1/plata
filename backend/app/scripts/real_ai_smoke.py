@@ -4,7 +4,7 @@ Es el único punto del proyecto que gasta llamadas pagas. Por eso:
 
 - **No corre nunca por accidente**: exige `RUN_REAL_AI_TESTS=1` y una configuración real
   completa. Si falta algo, no hace ni una llamada y dice exactamente qué variable falta.
-- **Tiene presupuesto duro**: `REAL_AI_MAX_CALLS` (default 12) cuenta cada request al
+- **Tiene presupuesto duro**: `REAL_AI_MAX_CALLS` (default 14) cuenta cada request al
   proveedor (chat y embeddings). El tope cuenta **requests reales, sin reintentos
   automáticos**: por eso el smoke fuerza `REAL_AI_MAX_RETRIES=0` por default, así una
   llamada contada es exactamente una llamada facturada. Un escenario que no entra en lo que
@@ -50,7 +50,10 @@ from app.services.draft_store import DraftStatus, get_draft_store
 # Identificador único de la corrida: marca todo lo que se cree para poder limpiarlo.
 RUN_ID = f"stage5-smoke-{uuid.uuid4()}"
 
-DEFAULT_MAX_CALLS = 12
+# Lo que consume una corrida completa: 1 + 3 + 3 + 4 + 2 + 2. Ojo que el `cost` de cada
+# escenario es lo que RESERVA, no lo que gasta: el de escritura hace una ronda más que las
+# que reserva. Con el número justo, el último escenario queda SKIPPED y la corrida falla.
+DEFAULT_MAX_CALLS = 16
 # Cero reintentos automáticos: con retries del SDK, un request contado podría convertirse en
 # varias llamadas facturadas y el contador dejaría de ser fiel a lo que se gasta.
 DEFAULT_MAX_RETRIES = 0
@@ -440,6 +443,55 @@ def scenario_read_and_multistep(run: Run) -> str:
     return f"rondas={len(rounds)} tools={names} call_id_preservado=True"
 
 
+def scenario_conversation(run: Run) -> str:
+    """8. Charla y repregunta con el modelo real: las dos rutas que no tocan la base.
+
+    Es lo único que no se puede validar con el mock, porque el mock no redacta: que ante una
+    pregunta conceptual el modelo conteste HABLANDO (sin pedir tools, sin inventar cifras y
+    sin caer en un mensaje de error), y que ante una compra sin precio pregunte el precio en
+    vez de suponerlo. Dos turnos, dos llamadas.
+    """
+    conceptual = ai_chat_service.chat(
+        run.session,
+        "¿Qué es un fondo de emergencia y por qué conviene tener uno?",
+        user_id=DEMO_USER_ID,
+        as_of=run.as_of,
+    )
+    run.conversation_ids.append(conceptual.conversation_id)
+
+    assert conceptual.route.value == "conversational", (
+        f"una pregunta conceptual tomó la ruta {conceptual.route.value}"
+    )
+    assert not conceptual.tools_used, (
+        f"se consultaron datos de la persona sin necesidad: {conceptual.tools_used}"
+    )
+    assert conceptual.requires_approval is False, "una charla no puede pedir aprobación"
+    assert "$" not in conceptual.answer, "una charla sin datos no puede afirmar montos"
+    for marker in ("No pude verificar", "No pude resolver", "formulario manual"):
+        assert marker not in conceptual.answer, f"la charla cayó al fallback: {marker}"
+    assert internal_leaks(conceptual.answer, conversational=True) == [], (
+        f"la respuesta expuso datos internos: {internal_leaks(conceptual.answer)}"
+    )
+    assert _verifier_ok(conceptual.conversation_id), "la charla no pasó el verificador"
+
+    sin_precio = ai_chat_service.chat(
+        run.session,
+        "¿Puedo comprar una notebook en 9 cuotas?",
+        user_id=DEMO_USER_ID,
+        as_of=run.as_of,
+    )
+    run.conversation_ids.append(sin_precio.conversation_id)
+
+    assert not any(t.name == "simulate_purchase_preview" for t in sin_precio.tools_used), (
+        "simuló una compra sin saber el precio"
+    )
+    assert "?" in sin_precio.answer, f"no preguntó el precio: {sin_precio.answer[:80]}"
+    for marker in ("No pude verificar", "No pude resolver", "formulario manual"):
+        assert marker not in sin_precio.answer, f"la repregunta cayó al fallback: {marker}"
+
+    return f"charla_ruta={conceptual.route.value} repregunta_ruta={sin_precio.route.value}"
+
+
 def scenario_rag(run: Run) -> str:
     """4. RAG con embeddings reales, aislando ingresos de gastos."""
     from app.ai.rag.retriever import HybridRetriever, SearchFilters, select_relevant, selected_total
@@ -533,7 +585,9 @@ def scenario_write_checkpoint_approve(run: Run) -> str:
     conversation_id = response.conversation_id
     action_id = response.pending_action.action_id
     close_checkpointer()
-    snapshot = get_compiled_graph().get_state({"configurable": {"thread_id": str(conversation_id)}})
+    snapshot = get_compiled_graph().get_state(
+        {"configurable": {"thread_id": _thread(conversation_id)}}
+    )
     assert snapshot.values.get("pending_action"), "la acción pendiente no sobrevivió"
     assert "apply_write" in getattr(snapshot, "next", ()), "la pausa no sobrevivió"
     recovered = str(snapshot.values["pending_action"]["action_id"])
@@ -608,11 +662,13 @@ def scenario_reject(run: Run) -> str:
     assert rejected.requires_approval is False, "sigue pendiente tras rechazar"
     assert _transaction_count(run.session) == count_before, "el rechazo creó un movimiento"
     assert _balance(run.session) == balance_before, "el rechazo movió el saldo"
-    final_status = get_draft_store().get(draft_id).status
+    # `get` exige el dueño (como en el resto del store): sin él es un TypeError. Este
+    # escenario nunca se alcanzaba con el presupuesto anterior, así que el error no salía.
+    final_status = get_draft_store().get(draft_id, user_id=DEMO_USER_ID).status
     assert final_status is DraftStatus.REJECTED, "el draft no quedó rejected"
 
     snapshot = get_compiled_graph().get_state(
-        {"configurable": {"thread_id": str(response.conversation_id)}}
+        {"configurable": {"thread_id": _thread(response.conversation_id)}}
     )
     assert not snapshot.values.get("pending_action"), "quedó una acción pendiente tras rechazar"
 
@@ -645,14 +701,26 @@ def _balance(session: Any) -> Decimal:
     return get_profile(session, DEMO_USER_ID).current_balance
 
 
+def _thread(conversation_id: uuid.UUID) -> str:
+    """El hilo del checkpointer, armado igual que en producción.
+
+    NO es el `conversation_id` a secas: `ai_chat_service` le antepone el dueño. Leer el
+    estado con el id pelado devuelve un hilo vacío, así que todo lo que se compruebe sobre
+    él pasa (o falla) por la razón equivocada, y un `delete ... where thread_id = ...` no
+    borra nada.
+    """
+    return _thread_id(DEMO_USER_ID, conversation_id)
+
+
 def _verifier_ok(conversation_id: uuid.UUID) -> bool:
-    snapshot = get_compiled_graph().get_state({"configurable": {"thread_id": str(conversation_id)}})
+    snapshot = get_compiled_graph().get_state(
+        {"configurable": {"thread_id": _thread(conversation_id)}}
+    )
     return bool(snapshot.values.get("verifier_ok", False))
 
 
 def _pending_draft_id(conversation_id: uuid.UUID) -> Any:
-    # El hilo del checkpointer incluye al dueño (ver ai_chat_service._thread_id).
-    config = {"configurable": {"thread_id": _thread_id(DEMO_USER_ID, conversation_id)}}
+    config = {"configurable": {"thread_id": _thread(conversation_id)}}
     snapshot = get_compiled_graph().get_state(config)
     return snapshot.values["pending_action"]["draft_id"]
 
@@ -764,7 +832,9 @@ def _delete_checkpoints(run: Run) -> int:
     """Conversaciones de la corrida en las tablas del checkpointer de LangGraph."""
     if not run.conversation_ids:
         return 0
-    threads = [str(cid) for cid in run.conversation_ids]
+    # Con el id de conversación pelado este delete no borraba una sola fila: el hilo real
+    # lleva el dueño adelante, así que los checkpoints de cada corrida quedaban en la base.
+    threads = [_thread(cid) for cid in run.conversation_ids]
     deleted = 0
     for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
         try:
@@ -870,6 +940,7 @@ def main() -> int:
                 _scenario(run, RAG_SCENARIO, 3, scenario_rag)
             _scenario(run, "5y7_escritura_checkpoint_approve", 3, scenario_write_checkpoint_approve)
             _scenario(run, "6_rechazo", 2, scenario_reject)
+            _scenario(run, "8_conversacion_y_repregunta", 2, scenario_conversation)
         finally:
             cleanup_detail = _cleanup(run)
             print(f"\ncleanup: {cleanup_detail}")

@@ -39,6 +39,10 @@ def run() -> int:
     supported = Metric("supported_amount_rate")
     coverage = Metric("evidence_coverage")
     unsupported = Metric("unsupported_claim_rate")
+    # Cuántas consultas se resuelven SIN tocar los datos de la persona cuando no hacía
+    # falta. Es la contracara de la métrica de grounding: una explicación conceptual que
+    # dispara una consulta a la base también está mal, aunque la respuesta se lea bien.
+    no_sql = Metric("no_sql_when_not_needed")
     failures: list[str] = []
 
     store = InMemoryDraftStore()
@@ -68,9 +72,16 @@ def run() -> int:
                 if not resp.evidence:
                     failures.append(f"'{row['message'][:30]}' sin evidencia")
 
-    metrics = [supported, coverage, unsupported]
+            if row.get("expects_tools") is False:
+                sin_tools = not resp.tools_used
+                no_sql.add(sin_tools)
+                if not sin_tools:
+                    tools = [tool.name for tool in resp.tools_used]
+                    failures.append(f"'{row['message'][:30]}' consultó datos de más: {tools}")
+
+    metrics = [supported, coverage, unsupported, no_sql]
     print_report("grounded_answers (mock)", metrics, failures)
-    return 0 if supported.rate == 1.0 and coverage.rate == 1.0 else 1
+    return 0 if supported.rate == 1.0 and coverage.rate == 1.0 and no_sql.rate == 1.0 else 1
 
 
 def main() -> None:

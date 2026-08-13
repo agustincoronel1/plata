@@ -30,6 +30,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.services.categorizer import canonical_expense_category, normalize
+from app.services.spending_service import Period, parse_period, strip_period
+
+__all__ = ["FastPathIntent", "FastPathMatch", "Period", "match_fast_path"]
 
 
 class FastPathIntent(StrEnum):
@@ -42,14 +45,6 @@ class FastPathIntent(StrEnum):
     AVAILABLE_AMOUNT = "available_amount"
     RECENT_TRANSACTIONS = "recent_transactions"
     PENDING_COMMITMENTS = "pending_commitments"
-
-
-class Period(StrEnum):
-    """Rangos temporales soportados. Cualquier otro se va al agente."""
-
-    TODAY = "today"
-    WEEK = "week"
-    MONTH = "month"
 
 
 @dataclass(frozen=True)
@@ -150,17 +145,13 @@ _HAS_DIGIT = re.compile(r"\d")
 
 
 # --- Períodos ---------------------------------------------------------------------
+#
+# El vocabulario vive en `spending_service`, que es también quien traduce cada período a un
+# rango de fechas. Tenerlo en dos lados era el origen de un error silencioso: "el mes
+# pasado" no estaba en esta lista, así que caía en el default (el mes en curso) y la
+# persona recibía el total del mes equivocado sin ningún aviso.
 
 _TODAY = re.compile(r"\bhoy\b")
-_WEEK = re.compile(r"\b(?:esta\s+semana|en\s+la\s+semana|semanal)\b")
-_MONTH = re.compile(r"\b(?:este\s+mes|en\s+el\s+mes|del\s+mes|mensual)\b")
-
-# Las mismas expresiones, para poder sacarlas del texto antes de buscar una categoría:
-# en "cuánto gasté en el mes", el "en" es del período, no de una categoría.
-_PERIOD_PHRASES = re.compile(
-    r"\b(?:hoy|esta\s+semana|en\s+la\s+semana|semanal|este\s+mes|en\s+el\s+mes"
-    r"|del\s+mes|mensual)\b"
-)
 
 
 # --- Patrones por intención -------------------------------------------------------
@@ -261,11 +252,7 @@ _CATEGORY_AFTER_EN = re.compile(r"\ben\s+([a-z]+(?:\s+[a-z]+)?)")
 
 def _period(normalized: str) -> Period:
     """Rango pedido. Sin período explícito, el mes en curso (el default del producto)."""
-    if _TODAY.search(normalized):
-        return Period.TODAY
-    if _WEEK.search(normalized):
-        return Period.WEEK
-    return Period.MONTH
+    return parse_period(normalized) or Period.MONTH
 
 
 def _without_period(normalized: str) -> str:
@@ -274,7 +261,7 @@ def _without_period(normalized: str) -> str:
     Sin esto, "cuánto gasté en el mes" parecería preguntar por una categoría llamada
     "el mes" y terminaría cayendo al agente por una razón inventada.
     """
-    return _PERIOD_PHRASES.sub(" ", normalized)
+    return strip_period(normalized)
 
 
 def _category(text: str) -> str | None:

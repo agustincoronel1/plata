@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -82,6 +82,24 @@ class SearchArgs(BaseModel):
     date_from: date | None = None
     date_to: date | None = None
     top_k: int = Field(default=5, ge=1, le=20)
+
+
+class SpendingSummaryArgs(BaseModel):
+    """Total gastado o cobrado en un período. La agregación la hace PostgreSQL.
+
+    Existe porque `search_transactions` NO sirve para totalizar: recupera los movimientos
+    más parecidos a un texto (top-k acotado) y suma solo esos. Preguntar "cuánto gasté este
+    mes" por ahí devolvía la suma de un puñado de movimientos como si fuera el total.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    period: Literal["today", "week", "month", "previous_month"] | None = None
+    date_from: date | None = None
+    date_to: date | None = None
+    category: str | None = Field(default=None, max_length=60)
+    tx_type: str | None = Field(default=None, pattern="^(income|expense)$")
+    # Para "¿en qué categoría gasté más?": suma el período y además lo abre por categoría.
+    breakdown: bool = False
 
 
 class SimulateArgs(BaseModel):
@@ -242,6 +260,24 @@ def _check_one_time_purchase(ctx: ToolContext, args: OneTimePurchaseArgs) -> dic
     }
 
 
+def _get_spending_summary(ctx: ToolContext, args: SpendingSummaryArgs) -> dict[str, Any]:
+    """Total del período pedido, sumado por PostgreSQL sobre los movimientos del usuario."""
+    from app.models import TransactionType
+    from app.services.spending_service import Period, spending_summary
+
+    return spending_summary(
+        ctx.session,
+        ctx.user_id,
+        today=ctx.as_of,
+        period=Period(args.period) if args.period else None,
+        date_from=args.date_from,
+        date_to=args.date_to,
+        category=args.category,
+        tx_type=TransactionType(args.tx_type) if args.tx_type else TransactionType.EXPENSE,
+        breakdown=args.breakdown,
+    )
+
+
 def _search_transactions(ctx: ToolContext, args: SearchArgs) -> dict[str, Any]:
     tx_type = args.tx_type or _infer_tx_type(args.query)
     filters = SearchFilters(
@@ -334,9 +370,11 @@ def _create_commitment_draft(ctx: ToolContext, args: CreateCommitmentArgs) -> di
     # El resumen es lo único que la persona lee antes de aprobar, así que dice TODO lo que
     # se va a escribir: monto, fecha, categoría y si se repite. Aprobar a ciegas un
     # compromiso recurrente y descubrirlo después sería peor que no tener la función.
+    # La fecha se escribe como la lee una persona (05/09/2026), no en ISO: este resumen es
+    # lo único que se revisa antes de aprobar, así que va en el idioma del producto.
     summary = (
         f"compromiso {args.name} de {_fmt_money(args.amount)} en {category} "
-        f"para el {args.due_date.isoformat()}"
+        f"para el {args.due_date.strftime('%d/%m/%Y')}"
     )
     if args.is_recurring:
         summary += " (todos los meses)"
@@ -378,6 +416,9 @@ TOOLS: dict[str, Tool] = {
         "check_one_time_purchase", OneTimePurchaseArgs, _check_one_time_purchase, False
     ),
     "search_transactions": Tool("search_transactions", SearchArgs, _search_transactions, False),
+    "get_spending_summary": Tool(
+        "get_spending_summary", SpendingSummaryArgs, _get_spending_summary, False
+    ),
     "create_transaction_draft": Tool(
         "create_transaction_draft", CreateTransactionArgs, _create_transaction_draft, True
     ),
@@ -388,6 +429,20 @@ TOOLS: dict[str, Tool] = {
 
 MULTIPLE_SENSITIVE_ACTIONS_ERROR = "multiple_sensitive_actions_not_allowed"
 MULTIPLE_SENSITIVE_ACTIONS_MESSAGE = "Vector prepara una acción sensible por vez."
+
+INVENTED_AMOUNT_ERROR = "amount_not_stated_by_user"
+INVENTED_AMOUNT_MESSAGE = (
+    "No ejecuté el cálculo: ese monto no lo dijo la persona. Preguntale cuánto sale antes "
+    "de volver a pedir esta herramienta."
+)
+
+# Tools que calculan sobre un monto que tiene que haber salido de la persona, y cuál es el
+# argumento en cuestión. El resto de las tools leen datos propios y no reciben plata de
+# afuera, así que no necesitan esta barrera.
+AMOUNT_FROM_USER: dict[str, str] = {
+    "simulate_purchase_preview": "total_amount",
+    "check_one_time_purchase": "amount",
+}
 
 
 def is_write_tool(name: str) -> bool:
@@ -405,6 +460,58 @@ def blocked_sensitive_tool_result(name: str, arguments: dict[str, Any]) -> dict[
         "writes": is_write_tool(name),
         "data": None,
     }
+
+
+def blocked_invented_amount_result(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": name,
+        "arguments": arguments,
+        "ok": False,
+        "error": INVENTED_AMOUNT_ERROR,
+        "message": INVENTED_AMOUNT_MESSAGE,
+        "duration_ms": 0,
+        "writes": is_write_tool(name),
+        "data": None,
+    }
+
+
+def amount_is_from_user(
+    name: str,
+    arguments: dict[str, Any],
+    user_texts: list[str],
+    tool_results: list[dict[str, Any]] | None = None,
+) -> bool:
+    """Si el monto con el que se va a calcular salió de la persona (o de nuestros datos).
+
+    Es la barrera que impide el peor final posible: que el modelo complete un precio que
+    nadie dijo, lo pase al simulador y la respuesta salga con la pinta de estar respaldada,
+    porque técnicamente el número *vuelve* de una tool. Un monto inventado que pasa por el
+    motor financiero queda grounded para el verificador, y ahí ya no hay quién lo detecte.
+
+    Se acepta lo que la persona escribió en la conversación y lo que devolvieron las tools
+    de este turno (encadenar sobre el propio disponible no es inventar). Cualquier otra
+    cosa se bloquea y el turno pasa a pedir el dato.
+    """
+    from app.ai.agent.brain import mentioned_amounts
+
+    field = AMOUNT_FROM_USER.get(name)
+    if field is None:
+        return True
+    raw = arguments.get(field)
+    if raw is None:
+        return True
+
+    try:
+        amount = int(Decimal(str(raw)))
+    except (ArithmeticError, ValueError):
+        return False
+
+    if amount in mentioned_amounts(user_texts):
+        return True
+
+    from app.ai.agent.verifier import known_amounts
+
+    return amount in known_amounts(tool_results or [], [])
 
 
 def run_tool(ctx: ToolContext, name: str, arguments: dict[str, Any]) -> dict[str, Any]:

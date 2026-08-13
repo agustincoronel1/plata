@@ -67,6 +67,7 @@ def log_chat_trace(
     trace_id: str,
     conversation_id: str,
     intent: str,
+    route: str = "",
     tools_used: list[str],
     tool_durations_ms: list[int],
     evidence_count: int,
@@ -86,6 +87,9 @@ def log_chat_trace(
         "conversation_id": conversation_id,
         "task": "copilot_chat",
         "intent": intent,
+        # Cómo se resolvió el turno (datos, charla, aclaración, mixto, error). Es lo que
+        # permite medir cuántas consultas toman cada camino sin loguear una sola palabra.
+        "route": route,
         "tools_used": tools_used,
         "tool_durations_ms": tool_durations_ms,
         "evidence_count": evidence_count,

@@ -48,7 +48,7 @@ class PlannedBrain:
         self.intent = intent
         self.calls = calls
 
-    def classify(self, message: str, history: list[dict]) -> dict:
+    def classify(self, message: str, history: list[dict], context: dict | None = None) -> dict:
         return {
             "intent": self.intent,
             "confidence": 0.9,
@@ -560,7 +560,7 @@ class _FailingBrain:
     def __init__(self, error: Exception) -> None:
         self._error = error
 
-    def classify(self, message: str, history: list[dict]) -> dict:
+    def classify(self, message: str, history: list[dict], context: dict | None = None) -> dict:
         raise self._error
 
     def answer(self, intent: AgentIntent, context: dict) -> str:

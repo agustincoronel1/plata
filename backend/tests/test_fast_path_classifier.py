@@ -28,6 +28,10 @@ from app.services.categorizer import EXPENSE_CATEGORIES
         ("cuántos gastos tuve esta semana", Period.WEEK),
         # "en el mes" es período, no una categoría llamada "el mes".
         ("cuánto gasté en el mes", Period.MONTH),
+        # El mes anterior es un rango propio. Antes no estaba en el vocabulario y caía en
+        # el default, así que se contestaba el total del mes EN CURSO sin decirlo.
+        ("cuánto gasté el mes pasado", Period.PREVIOUS_MONTH),
+        ("cuánto gasté el mes anterior", Period.PREVIOUS_MONTH),
     ],
 )
 def test_expense_total(message: str, period: Period) -> None:
@@ -48,6 +52,7 @@ def test_expense_total(message: str, period: Period) -> None:
         # Sin acento y con mayúsculas: la normalización del categorizador se encarga.
         ("cuanto gaste en EDUCACION", "educación", Period.MONTH),
         ("cuánto gasté en salud esta semana", "salud", Period.WEEK),
+        ("cuánto gasté en comida el mes pasado", "comida", Period.PREVIOUS_MONTH),
     ],
 )
 def test_expense_by_category(message: str, category: str, period: Period) -> None:

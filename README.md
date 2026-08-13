@@ -102,13 +102,13 @@ Las piezas:
   execute_tools → generate_answer → verify_results → [apply_write]`. Las escrituras pausan
   el grafo con `interrupt_before` hasta la aprobación; el checkpointer en PostgreSQL
   sostiene la conversación multi-turno.
-- **Tools acotadas**: lectura (resumen financiero, compromisos pendientes, búsqueda de
-  movimientos, preview de simulación) y escritura solo vía borrador. Ninguna tool declara
-  `user_id` en su schema: el dueño sale del JWT y viaja por el contexto de ejecución, fuera
-  del estado del grafo y fuera del prompt.
+- **Tools acotadas**: lectura (resumen financiero, compromisos pendientes, totales por
+  período y categoría, búsqueda de movimientos, preview de simulación) y escritura solo vía
+  borrador. Ninguna tool declara `user_id` en su schema: el dueño sale del JWT y viaja por
+  el contexto de ejecución, fuera del estado del grafo y fuera del prompt.
 - **RAG híbrido** (`app/ai/rag/`): full-text de PostgreSQL (`tsvector`/`ts_rank`) y
   pgvector fusionados con Reciprocal Rank Fusion, aislados por usuario. El RAG solo
-  *encuentra* movimientos; las sumas las hace SQL.
+  *encuentra* movimientos; las sumas las hace SQL (`spending_service`).
 - **Verificador determinístico**: rechaza montos sin evidencia y escrituras sin aprobación
   antes de que la respuesta llegue a la pantalla.
 - **Trazas** en JSON con intención, tools, duraciones y resultado del verificador. No se
@@ -117,6 +117,37 @@ Las piezas:
 
 El texto del usuario se trata como dato, no como instrucción. Hay un evaluador de prompt
 injection que corre en cada iteración.
+
+### No toda pregunta termina en una consulta
+
+Un copiloto financiero que solo sabe contestar con SQL es un buscador con otra cara. Cada
+turno declara su **ruta** (`app/ai/agent/schemas.py`) y de ahí sale todo lo demás:
+
+| Ruta | Cuándo | Quién pone los números |
+|---|---|---|
+| `deterministic` | "¿cuánto gasté este mes?", "¿cuánto tengo disponible?" | SQL y el motor financiero |
+| `simulation` | "¿puedo comprarla en 9 cuotas?" | el simulador determinístico |
+| `action` | "gasté 10.000 en nafta" | borrador + aprobación humana |
+| `clarification` | falta el precio, la fecha o el monto | nadie: se pregunta |
+| `conversational` | "¿qué es un fondo de emergencia?" | nadie: se explica |
+| `mixed` | "¿estoy gastando demasiado en comida?" | SQL primero, razonamiento después |
+| `unsupported` / `error` | fuera de alcance, o algo falló de verdad | — |
+
+Las tres reglas que sostienen esto:
+
+1. **Que falte un dato no es un error.** Es un estado (`pending_request`): se guarda lo que
+   ya se sabe, se pregunta lo que falta y el turno siguiente completa. "¿Puedo comprar una
+   notebook en 9 cuotas?" pregunta el precio; "1.200.000" ejecuta la simulación.
+2. **Se consulta la base solo si la respuesta depende de la plata de quien pregunta.** "¿Qué
+   es un gasto fijo?" no toca PostgreSQL; "¿cuánto gasto yo en fijos?" sí.
+3. **Conversar no habilita a inventar.** En la ruta conversacional no corre ninguna tool, y
+   por lo tanto ningún monto tiene respaldo: el verificador no deja pasar ni uno. Los
+   números salen siempre de los datos, nunca del modelo.
+
+El verificador es por ruta, y cuando algo no pasa **no se corta la conversación**: en un
+turno de datos se cae a la plantilla determinística —que tiene los números correctos— y en
+uno conversacional se ofrece mirar los datos reales. El mensaje de error quedó para lo que
+de verdad falla: el proveedor caído, una salida estructurada corrupta, una tool rota.
 
 ### Autenticación
 
