@@ -121,19 +121,38 @@ describe('timeouts separados', () => {
     expect(error.timeout).toBe(true)
   })
 
-  it('confirmar y aprobar solo tocan PostgreSQL: conservan el timeout corto', async () => {
+  it('confirmar y aprobar usan 60000 ms: escriben, y abortarlas no frena al backend', async () => {
     const fetchMock = neverRespondingFetch()
     vi.stubGlobal('fetch', fetchMock)
 
     const confirming = capture(confirmAITransaction('draft-1'))
     const approving = capture(approveCopilotAction('conv-1', 'action-1'))
 
+    // A los 5 segundos ya no se cancelan: ese era el bug, el navegador cortaba una
+    // escritura en curso y el reintento se encontraba la acción pendiente ya consumida.
     await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS)
+    expect(signalOf(fetchMock, 0).aborted).toBe(false)
+    expect(signalOf(fetchMock, 1).aborted).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(AI_TIMEOUT_MS - DEFAULT_TIMEOUT_MS)
     expect(signalOf(fetchMock, 0).aborted).toBe(true)
     expect(signalOf(fetchMock, 1).aborted).toBe(true)
 
     expect((await confirming).error.timeout).toBe(true)
     expect((await approving).error.timeout).toBe(true)
+  })
+
+  it('aprobar acepta una respuesta que tarda 13 segundos', async () => {
+    const fetchMock = slowFetch(13100, { status: 'applied' })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const settled = capture(approveCopilotAction('conv-1', 'action-1'))
+    await vi.advanceTimersByTimeAsync(13100)
+
+    const { value, error } = await settled
+    expect(error).toBeNull()
+    expect(value).toEqual({ status: 'applied' })
+    expect(signalOf(fetchMock).aborted).toBe(false)
   })
 
   it('acepta una respuesta de IA que tarda 13 segundos', async () => {
@@ -226,6 +245,17 @@ describe('sin reintentos automáticos', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const settled = capture(parseAITransaction('Gasté 25 lucas'))
+    await vi.advanceTimersByTimeAsync(AI_TIMEOUT_MS * 3)
+    await settled
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('aprobar tampoco reintenta: el backend pudo haber escrito igual', async () => {
+    const fetchMock = neverRespondingFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const settled = capture(approveCopilotAction('conv-1', 'action-1'))
     await vi.advanceTimersByTimeAsync(AI_TIMEOUT_MS * 3)
     await settled
 

@@ -294,12 +294,17 @@ export function parseAITransaction(text) {
 
 /**
  * Confirma un borrador (con correcciones opcionales) y recién ahí registra el movimiento.
- * No vuelve a llamar al modelo, así que conserva el timeout corto.
+ *
+ * Usa el timeout largo aunque no vuelva a llamar al modelo: en producción el confirm puede
+ * pasarse de 5 segundos y el navegador cancelaba una escritura que el backend ya estaba
+ * haciendo. Abortar no frena al backend, así que el borrador quedaba consumido y el
+ * segundo intento moría en 404 después de haber mostrado un error que no era real.
  */
 export function confirmAITransaction(draftId, { corrections = null } = {}) {
   return request(`/ai/transactions/${draftId}/confirm`, {
     method: 'POST',
     body: { confirmed: true, corrections },
+    timeoutMs: AI_TIMEOUT_MS,
   })
 }
 
@@ -320,13 +325,20 @@ export function chatCopilot(message, conversationId = null) {
 }
 
 /**
- * Aprobar/rechazar reanuda el grafo en el nodo `apply_write`, que va derecho a END: escribe
- * (o descarta) en PostgreSQL sin volver a llamar al modelo. Timeout corto.
+ * Aprobar reanuda el grafo en el nodo `apply_write`, que va derecho a END: escribe en
+ * PostgreSQL sin volver a llamar al modelo.
+ *
+ * Aun así usa el timeout largo, igual que `chatCopilot`. Reanudar el grafo implica
+ * levantar el checkpoint y escribir, y en producción eso se pasaba de 5 segundos: el
+ * navegador abortaba con "El servidor tardó más de lo esperado" mientras el backend
+ * terminaba la escritura igual. La acción pendiente quedaba consumida y el reintento
+ * recibía 404, así que el error era doblemente falso.
  */
 export function approveCopilotAction(conversationId, actionId) {
   return request(`/ai/conversations/${conversationId}/approve`, {
     method: 'POST',
     body: { action_id: actionId },
+    timeoutMs: AI_TIMEOUT_MS,
   })
 }
 
